@@ -10,6 +10,7 @@ exp1/buf20k; empty for runs directly under runs/); /summary.json lists the colle
 
 import argparse
 import json
+import threading
 import sys
 from functools import partial
 from urllib.parse import parse_qs, urlsplit
@@ -24,6 +25,7 @@ from recording import FILE_NAME, episode, episodes, read  # noqa: E402
 from train import GROUPS, RUNS_DIR  # noqa: E402
 
 _cache: dict[str, dict] = {}
+_analysis_lock = threading.Lock()  # one analysis at a time: concurrent requests wait for it, not redo it
 
 
 def _no_nan(value):
@@ -50,10 +52,11 @@ def summary(query: dict) -> dict:
     runs = load_all(name)
     done = finished(runs)
     key = json.dumps([name, {group: [run["seed"] for run in group_runs] for group, group_runs in done.items()}])
-    if key not in _cache:
-        if len(_cache) > 20:
-            _cache.clear()
-        _cache[key] = analysis(done)
+    with _analysis_lock:
+        if key not in _cache:
+            if len(_cache) > 20:
+                _cache.clear()
+            _cache[key] = analysis(done)
     return {"groups": GROUPS, "collection": name, "collections": collections(), "runs": runs, "analysis": _cache[key]}
 
 
