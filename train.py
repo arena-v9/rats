@@ -26,28 +26,39 @@ import numpy as np
 import torch as t
 
 from agent import BATCH_SIZE, BUFFER_SIZE, LEARNING_RATE, MAX_GRAD_NORM, QNetwork, ReplayBuffer, train_step
-from env import NUM_ACTIONS, OBSERVATION, REST, LeverTask
+from env import EPISODE_STEPS, NUM_ACTIONS, OBSERVATION, REST, TIME_COMPRESSION, LeverTask, per_step, steps
 from evaluate import evaluate
 from exact import exact_trial_q
 from recording import FILE_NAME, Recorder
 
 # Each group changes one thing. The pilot checks the agent can learn to avoid a lit lever that shocks itself.
+# Random shocks: 0.004 per uncompressed step, i.e. 0.1 per trial interval
 GROUPS = {
-    "shocked": {"phase1_shock_prob": 0.004, "phase2_target": "other"},
+    "shocked": {"phase1_shock_prob": per_step(0.004), "phase2_target": "other"},
     "never_shocked": {"phase1_shock_prob": 0.0, "phase2_target": "other"},
-    "pilot_self_shock": {"phase1_shock_prob": 0.004, "phase2_target": "self"},
+    "pilot_self_shock": {"phase1_shock_prob": per_step(0.004), "phase2_target": "self"},
 }
+
+
+def _schedule(phase1, phase2, warmup, epsilon_end, checkpoint_every, log_every, main_window) -> dict:
+    """A schedule written in uncompressed steps (as in version 3.3), in steps now."""
+    return {"phase1_steps": steps(phase1), "phase2_steps": steps(phase2), "warmup_steps": steps(warmup),
+            "epsilon_end_step": steps(epsilon_end), "checkpoint_every": steps(checkpoint_every),
+            "log_every": steps(log_every), "main_window": tuple(steps(x) for x in main_window)}
+
+
 SCHEDULES = {
-    "full": {"phase1_steps": 100_000, "phase2_steps": 200_000, "warmup_steps": 20_000, "epsilon_end_step": 50_000,
-             "checkpoint_every": 20_000, "log_every": 5_000, "main_window": (120_000, 160_000)},
-    "quick": {"phase1_steps": 40_000, "phase2_steps": 80_000, "warmup_steps": 10_000, "epsilon_end_step": 25_000,
-              "checkpoint_every": 5_000, "log_every": 1_000, "main_window": (45_000, 60_000)},
+    "full": _schedule(100_000, 200_000, 20_000, 50_000, 20_000, 5_000, (120_000, 160_000)),
+    "quick": _schedule(40_000, 80_000, 10_000, 25_000, 5_000, 1_000, (45_000, 60_000)),
 }
 # warmup: random actions fill the buffer before training starts; checkpoint_every: phase-2 steps between greedy
 # evaluations; log_every: steps between training-curve points; main_window: the checkpoints the main measure averages
-# (full: 120k, 140k, 160k; quick: 45k to 60k, the first 20k steps of phase 2)
+# (full: 120k, 140k, 160k uncompressed; quick: 45k to 60k, the first 20k uncompressed steps of phase 2)
 EPSILON_START, EPSILON_END = 1.0, 0.02
-TARGET_UPDATE_EVERY = 200  # gradient steps
+# Gradient updates per environment step. With time compressed, 1 means fewer updates per trial than before (5 instead
+# of 25 at k = 5); TIME_COMPRESSION keeps the updates per trial of version 3.3. An ablation decides (version 4).
+UPDATES_PER_STEP = 1
+TARGET_SYNC_STEPS = steps(200)  # the target network syncs every 8 trials (200 uncompressed steps) of updates
 MAX_PARALLEL = min(10, os.cpu_count() or 1)  # one core per run
 RUNS_DIR = Path(__file__).parent / "runs"
 
@@ -74,11 +85,12 @@ def collection_for(experiment: str | None, buffer_size: int) -> str:
 
 
 def train(group: str, seed: int, schedule_name: str = "full", buffer_size: int = BUFFER_SIZE,
-          collection: str = "") -> None:
+          collection: str = "", updates_per_step: int = UPDATES_PER_STEP) -> None:
     settings, schedule = GROUPS[group], SCHEDULES[schedule_name]
     phase1_steps, warmup = schedule["phase1_steps"], schedule["warmup_steps"]
     run_dir = RUNS_DIR / collection / group / f"seed_{seed}"
     code_version = commit()
+    target_sync_updates = TARGET_SYNC_STEPS * updates_per_step  # the same number of trials between syncs
     run_dir.mkdir(parents=True, exist_ok=True)
     device = t.device("cuda" if t.cuda.is_available() else "cpu")
     t.manual_seed(seed)
@@ -103,7 +115,9 @@ def train(group: str, seed: int, schedule_name: str = "full", buffer_size: int =
         metrics = {"group": group, "seed": seed, "settings": settings, "schedule": schedule_name,
                    "buffer_size": buffer_size, "collection": collection, "commit": code_version, "status": status,
                    "step": step, "total_steps": total_steps, "phase1_steps": phase1_steps,
-                   "main_window": schedule["main_window"],
+                   "main_window": schedule["main_window"], "time_compression": TIME_COMPRESSION,
+                   "episode_steps": EPISODE_STEPS, "updates_per_step": updates_per_step,
+                   "target_sync_updates": target_sync_updates,
                    "seconds": round(time.time() - start), "episodes": episodes, "training": training,
                    "checkpoints": checkpoints}
         temporary = run_dir / "metrics.json.tmp"
@@ -143,12 +157,13 @@ def train(group: str, seed: int, schedule_name: str = "full", buffer_size: int =
             obs, episode_return = env.reset(), 0.0
 
         if step >= warmup:
-            batch = buffer.sample(BATCH_SIZE, device)
-            count_update(window, train_step(q_net, target_net, optimizer, batch), batch)
-            updates += 1
-            if updates % TARGET_UPDATE_EVERY == 0:
-                window["target_drift"].append(target_drift(q_net, target_net, device))
-                target_net.load_state_dict(q_net.state_dict())
+            for _ in range(updates_per_step):
+                batch = buffer.sample(BATCH_SIZE, device)
+                count_update(window, train_step(q_net, target_net, optimizer, batch), batch)
+                updates += 1
+                if updates % target_sync_updates == 0:
+                    window["target_drift"].append(target_drift(q_net, target_net, device))
+                    target_net.load_state_dict(q_net.state_dict())
         if step >= phase1_steps and (step + 1 - phase1_steps) % schedule["checkpoint_every"] == 0:
             checkpoint(step + 1)
         if (step + 1) % schedule["log_every"] == 0:
@@ -300,7 +315,7 @@ def diagnostics(q_net, target_net, buffer: ReplayBuffer, device: t.device, lit_t
     return result
 
 
-def launch(jobs: list[tuple[str, int, int, str]], schedule_name: str) -> None:
+def launch(jobs: list[tuple[str, int, int, str]], schedule_name: str, updates_per_step: int) -> None:
     """
     Runs each job (group, seed, buffer size, collection) in its own process, at most MAX_PARALLEL at once; each logs
     to its run directory.
@@ -312,7 +327,8 @@ def launch(jobs: list[tuple[str, int, int, str]], schedule_name: str) -> None:
         log = RUNS_DIR / collection / group / f"seed_{seed}" / "train.log"
         log.parent.mkdir(parents=True, exist_ok=True)
         command = [sys.executable, __file__, "--groups", group, "--seeds", str(seed), "--schedule", schedule_name,
-                   "--buffers", str(buffer_size), "--collection", collection]
+                   "--buffers", str(buffer_size), "--collection", collection,
+                   "--updates-per-step", str(updates_per_step)]
         processes.append(subprocess.Popen(command, stdout=log.open("w"), stderr=subprocess.STDOUT))
     failed = [job for job, p in zip(jobs, processes) if p.wait() != 0]
     print(f"{len(jobs) - len(failed)}/{len(jobs)} runs finished" + (f"; failed (see train.log): {failed}" if failed else ""))
@@ -323,6 +339,7 @@ def main() -> None:
     parser.add_argument("--groups", nargs="+", choices=GROUPS, required=True)
     parser.add_argument("--seeds", nargs="+", type=int, required=True)
     parser.add_argument("--schedule", choices=SCHEDULES, default="full")
+    parser.add_argument("--updates-per-step", type=int, default=UPDATES_PER_STEP)
     parser.add_argument("--buffers", nargs="+", type=int, default=[BUFFER_SIZE], help="replay buffer sizes")
     parser.add_argument("--experiment", help="name; runs go to runs/<experiment>/buf<size>k/")
     parser.add_argument("--pilot-seeds", nargs="+", type=int, help="seeds for pilot_self_shock (default: --seeds)")
@@ -338,9 +355,9 @@ def main() -> None:
             if seed in (args.pilot_seeds or args.seeds if group == "pilot_self_shock" else args.seeds)]
     if len(jobs) == 1:
         t.set_num_threads(1)
-        train(jobs[0][0], jobs[0][1], args.schedule, jobs[0][2], jobs[0][3])
+        train(jobs[0][0], jobs[0][1], args.schedule, jobs[0][2], jobs[0][3], args.updates_per_step)
     else:
-        launch(jobs, args.schedule)
+        launch(jobs, args.schedule, args.updates_per_step)
 
 
 if __name__ == "__main__":

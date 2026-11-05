@@ -184,6 +184,7 @@ const fmt = {
 };
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function runKey(run) { return `${run.group}/${run.seed}`; }
+const episodeSteps = () => state.list?.episode_steps ?? 100;  // per run: shorter once time is compressed
 function currentRun() { return state.runs.find(r => runKey(r) === state.run); }
 // The collection of runs (?runs=exp1/buf20k; empty for runs directly under runs/), from the page's URL
 const COLLECTION = new URLSearchParams(location.search).get("runs") ?? "";
@@ -410,7 +411,7 @@ function drawTimeline() {
   canvas.width = width * dpr; canvas.height = height * dpr; canvas.style.height = `${height}px`;
   const g = canvas.getContext("2d");
   g.scale(dpr, dpr);
-  const e = state.ep, n = e.t.length, gutter = 92, cell = (width - gutter) / 100;
+  const e = state.ep, n = e.t.length, gutter = 92, cell = (width - gutter) / episodeSteps();
   const ink2 = cssVar("--ink-2"), grid = cssVar("--grid"), muted = cssVar("--muted");
   const rows = [
     { label: "Levers", h: 12 }, { label: "Agent shock", h: 8 }, { label: "Other shock", h: 8 },
@@ -422,7 +423,7 @@ function drawTimeline() {
   for (const row of rows) { row.y = y; y += row.h + 4; }
   for (const row of rows) {
     g.fillStyle = ink2; g.fillText(row.label, 0, row.y + row.h / 2);
-    g.fillStyle = grid; g.fillRect(gutter, row.y, cell * 100, row.h);
+    g.fillStyle = grid; g.fillRect(gutter, row.y, cell * episodeSteps(), row.h);
   }
   const col = i => gutter + i * cell, w = Math.max(1, cell - (cell > 3 ? 1 : 0));
   for (let i = 0; i < n; i++) {
@@ -442,7 +443,7 @@ function drawTimeline() {
   }
   // Reward: bars from a zero line, scaled to the episode's largest |reward|
   const r = rows[7], mid = r.y + r.h / 2, scale = Math.max(...e.reward.map(Math.abs), 1e-6);
-  g.fillStyle = muted; g.fillRect(gutter, mid, cell * 100, 1);
+  g.fillStyle = muted; g.fillRect(gutter, mid, cell * episodeSteps(), 1);
   for (let i = 0; i < n; i++) {
     const v = e.reward[i] / scale * (r.h / 2 - 1);
     g.fillStyle = v >= 0 ? "#46c37b" : "#e5484d";
@@ -457,7 +458,7 @@ function drawTimeline() {
 }
 function seekFromTimeline(event) {
   const canvas = $("timeline"), rect = canvas.getBoundingClientRect(), gutter = 92;
-  const cell = (rect.width - gutter) / 100, i = Math.floor((event.clientX - rect.left - gutter) / cell);
+  const cell = (rect.width - gutter) / episodeSteps(), i = Math.floor((event.clientX - rect.left - gutter) / cell);
   if (state.ep && i >= 0) { state.frame = Math.min(i, state.ep.t.length - 1); state.playing = false; update(); }
 }
 
@@ -509,7 +510,7 @@ function hud() {
   const shockText = e.agent_shock[f] === 1 ? "random shock" : e.agent_shock[f] === 2 ? "shocked by the lit lever" : null;
   const happened = [
     e.agent_fed[f] && "agent got a pellet", shockText && `agent: ${shockText}`, e.other_shock[f] && "other shocked by the lit lever",
-    e.other_fed[f] && "other got a pellet", e.end[f] === 1 && "agent died", e.end[f] === 2 && "episode ends (100 steps)",
+    e.other_fed[f] && "other got a pellet", e.end[f] === 1 && "agent died", e.end[f] === 2 && `episode ends (${episodeSteps()} steps)`,
   ].filter(Boolean);
   const [h, en] = e.agent_after[f], [oh, oen] = e.other_after[f];
   node.innerHTML = `
@@ -539,7 +540,7 @@ function episodeHead() {
   const list = state.list, i = state.i, node = $("episode-head");
   if (!node || !list) return;
   const end = list.end[i], inProgress = end === 0 && i === list.count - 1 && currentRun()?.status !== "done";
-  const ending = end === 1 ? "agent died" : end === 2 ? "full 100 steps" : inProgress ? "still being played" : "cut short by the switch to phase 2";
+  const ending = end === 1 ? "agent died" : end === 2 ? `full ${episodeSteps()} steps` : inProgress ? "still being played" : "cut short by the switch to phase 2";
   const presses = list.lit_presses[i] + list.unlit_presses[i];
   node.innerHTML = `<strong>Episode ${fmt.int(i)}</strong> of ${fmt.int(list.count - 1)} · phase ${list.phase[i]} ·
     lever ${ACTIONS[list.lit[i]]} lit · training steps ${fmt.int(list.start[i])}–${fmt.int(list.start[i] + list.length[i] - 1)} ·

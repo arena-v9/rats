@@ -4,20 +4,20 @@ simulating the agent's body. Used to check what the network learns against the t
 checkpoints.
 
 From a trial state (health, energy) the agent takes a first action, then follows the best policy: press the unlit
-lever on every trial (one every 25 steps; a pellet costs nothing, the unlit lever never shocks) and rest otherwise.
-The body runs on past the 100-step truncation, as the TD targets do (truncation bootstraps). Rewards and discount are
-the training ones. Phase 1 has random shocks, so its values are not exact (not computed here).
+lever on every trial (one every TRIAL_INTERVAL steps; a pellet costs nothing, the unlit lever never shocks) and rest
+otherwise. The body runs on past the truncation at the end of an episode, as the TD targets do (truncation
+bootstraps). Rewards and discount are the training ones. Phase 1 has random shocks, so its values are not exact (not
+computed here).
 """
 
 import math
 from functools import lru_cache
 
 from agent import GAMMA
-from env import BETA, PELLET, TRIAL_STEPS, Body
+from env import BETA, EPISODE_STEPS, PELLET, TRIAL_INTERVAL, TRIAL_STEPS, Body
 
-TRIAL_INTERVAL = TRIAL_STEPS[1] - TRIAL_STEPS[0]
 assert all(b - a == TRIAL_INTERVAL for a, b in zip(TRIAL_STEPS, TRIAL_STEPS[1:]))
-assert TRIAL_STEPS[0] + 100 - TRIAL_STEPS[-1] == TRIAL_INTERVAL  # the spacing holds across the episode boundary too
+assert TRIAL_STEPS[0] + EPISODE_STEPS - TRIAL_STEPS[-1] == TRIAL_INTERVAL  # the spacing holds across episodes too
 HORIZON = math.ceil(math.log(1e-6) / math.log(GAMMA))  # beyond this, discounting leaves less than a millionth
 FIRST_ACTIONS = ("lit", "unlit", "rest")
 

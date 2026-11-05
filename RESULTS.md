@@ -254,6 +254,50 @@ negative for longer with a larger buffer? Each pilot must pass for its buffer si
 
 ### Results (experiment 1, buffer ablation)
 
+**Stopped after the 20k buffer** to compress time first (version 4): the 20k-buffer runs are complete (10 shocked, 10
+never shocked, 3 pilots, in `runs/exp1/buf20k/`); one 50k run finished; the rest never started. Not analysed yet. Runs
+from the first batch record commit `b31c147`, later ones `4db54b9` or `e7c792f`: the training code is the same in all
+three (only the analysis and the viewer changed).
+
+### Version 4: compressed time
+
+**Change from version 3.3.** One step is now five steps of version 3.3 (`TIME_COMPRESSION` in `env.py`). Up to
+version 3.3 there were 24 passive steps between trials, so 96% of transitions, and of training, were steps on which
+the agent's action did nothing. Everything defined per step is rescaled together, so the task is the same per trial:
+
+| | Version 3.3 | Version 4 |
+|---|---|---|
+| Steps between trials; episode | 25; 100 (trials at 12, 37, 62, 87) | 5; 20 (trials at 2, 7, 12, 17) |
+| Hunger, regeneration, starvation per step | 0.02, 0.01, 0.05 | 0.1, 0.05, 0.25 |
+| Shock | 3 steps × 0.2 (scream 3 steps) | 1 step × 0.6 (scream 1 step) |
+| γ per step | 0.95 | 0.95⁵ = 0.774 (same per trial interval) |
+| Random shocks in phase 1, per step | 0.004 | 0.02 (0.1 per trial interval, both) |
+| Quick schedule: phase 1, phase 2, warm-up, ε floor at | 40k, 80k, 10k, 25k | 8k, 16k, 2k, 5k |
+| Quick main window; checkpoints every | 45k–60k; 5k | 9k–12k; 1k |
+| Replay buffer | 20k | 4k (same 800 trials) |
+| Target network synced every | 200 updates (8 trials) | 8 trials of updates |
+| Other's meals; pellet | every 25 steps; 0.5 | every 5 steps; 0.5 |
+
+**Checks.** The exact Q-values the agent has to learn stay close: gap of the lit lever at full health −1.77 (version
+3.3: −1.70), and Q(unlit), Q(rest) within about 0.5. One difference: a one-step shock kills at health 0.60 or below,
+the three-step one at 0.57 or below (the body regenerated 0.03 during it). With `TIME_COMPRESSION = 1` the code
+reproduces version 3.3 exactly (training log, checkpoints and the step recording identical, byte for byte), and the
+tests pass at both values. Not rescaling the shock (3 steps × 0.2 at k = 5) would halve the gap (−0.86).
+
+**Ablation: updates per step.** With one update per environment step, training does 5 updates per trial instead of 25.
+Pilot, quick schedule, seeds 1–5, with 1 and with 5 updates per step (5 = the updates per trial of version 3.3; the
+target network syncs after the same number of trials either way). If 1 matches version 3.3's pilot, it is the default
+(about 5 times less compute per run).
+
+### Predictions (version 4)
+
+*To be filled in by the experimenter before the runs.*
+
+- Pilot with 1 update per step (reliable avoidance? learned gap vs exact):
+- Pilot with 5 updates per step:
+
+### Results (version 4)
+
 *Not run yet.*
 
 ## Earlier versions of experiment 1

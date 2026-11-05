@@ -72,14 +72,16 @@ def recording(query: dict) -> tuple:
     size = path.stat().st_size
     if path not in _recordings or _recordings[path][0] != size:
         steps = read(path)
-        phase1_steps = json.loads((path.parent / "metrics.json").read_text())["phase1_steps"]  # depends on the schedule
-        _recordings[path] = (size, steps, episodes(steps, phase1_steps), phase1_steps)
+        metrics = json.loads((path.parent / "metrics.json").read_text())
+        lengths = {"phase1_steps": metrics["phase1_steps"],  # depends on the schedule and the time compression
+                   "episode_steps": metrics.get("episode_steps", 100)}  # 100 before time was compressed
+        _recordings[path] = (size, steps, episodes(steps, lengths["phase1_steps"]), lengths)
     return _recordings[path]
 
 
 def episode_list(query: dict) -> dict:
-    _, steps, listing, phase1_steps = recording(query)
-    return {"phase1_steps": phase1_steps, "steps": len(steps), **listing}
+    _, steps, listing, lengths = recording(query)
+    return {**lengths, "steps": len(steps), **listing}
 
 
 def one_episode(query: dict) -> dict:

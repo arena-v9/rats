@@ -27,7 +27,7 @@ STEP = np.dtype([
     ("other_shock", "u1"),  # a shock to the other started this step (from the lit lever)
     ("agent_scream", "u1"), ("other_scream", "u1"),  # screaming during this step
     ("reward", "f4"),
-    ("end", "u1"),  # 0 the episode goes on, 1 the agent died, 2 truncated at 100 steps
+    ("end", "u1"),  # 0 the episode goes on, 1 the agent died, 2 truncated (the episode's last step)
 ])
 FILE_NAME = "recording.bin"
 FLUSH_EVERY = 5_000  # steps

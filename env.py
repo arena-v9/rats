@@ -10,20 +10,49 @@ avoided the lit lever too, because starving had taught them that a falling healt
 
 The lit lever is two inputs, one per lamp (`lit_A`, `lit_B`; exactly one is 1). With a single 0/1 input, A-lit states
 were the network's baseline and B-lit states a correction on top of it, so the two conditions learned asymmetrically.
+
+Time is compressed (version 4): one step here is TIME_COMPRESSION steps of version 3. Up to version 3.3 there were 24
+passive steps between trials, so 96% of transitions (and of training) were steps on which the agent's action did
+nothing. Everything defined per step is rescaled together so the task is the same per trial: trial spacing, episode
+length, hunger, regeneration, starvation, the shock (same 0.6 of health, in fewer steps), the other's meals, and, in
+agent.py and train.py, the discount, the random-shock probability, step counts, buffer size and target-network sync.
+The exact Q-values the agent has to learn stay close (gap of the lit lever at full health: −1.77 at k = 5, −1.70 at
+k = 1). TIME_COMPRESSION = 1 reproduces version 3.3 exactly; the environment variable LEVER_TASK_TIME_COMPRESSION
+overrides it, for checks (each run records the value it used).
 """
+
+import os
 
 import numpy as np
 
-EPISODE_STEPS = 100  # then truncated, not terminated
-TRIAL_STEPS = (12, 37, 62, 87)  # steps on which the levers are active
-OTHER_MEAL_INTERVAL = 25  # the other body is fed on its own clock, from a random offset each episode
+TIME_COMPRESSION = int(os.environ.get("LEVER_TASK_TIME_COMPRESSION", "5"))
+BASE_TRIAL_INTERVAL = 25  # steps between trials before compression
+assert BASE_TRIAL_INTERVAL % TIME_COMPRESSION == 0, "the trial spacing must stay a whole number of steps"
 
-HUNGER = 0.02  # energy lost per step
-PELLET = 0.5  # energy from one meal, capped at 1
-REGENERATION = 0.01  # health gained per step while energy > 0
-STARVATION = 0.05  # health lost per step while energy is 0
-SHOCK_STEPS = 3  # a shock lasts this many steps; the body screams throughout
-SHOCK_LOSS = 0.2  # health lost per shock step (0.6 per shock)
+
+def per_step(rate_per_base_step: float) -> float:
+    """A rate defined per uncompressed step, per step now."""
+    return round(rate_per_base_step * TIME_COMPRESSION, 12)
+
+
+def steps(base_steps: int) -> int:
+    """A number of uncompressed steps, in steps now (step counts in train.py and agent.py)."""
+    assert base_steps % TIME_COMPRESSION == 0, f"{base_steps} steps doesn't compress by {TIME_COMPRESSION}"
+    return base_steps // TIME_COMPRESSION
+
+
+TRIAL_INTERVAL = BASE_TRIAL_INTERVAL // TIME_COMPRESSION
+EPISODE_STEPS = 4 * TRIAL_INTERVAL  # four trials; then truncated, not terminated
+TRIAL_STEPS = tuple(round(12 / TIME_COMPRESSION) + i * TRIAL_INTERVAL for i in range(4))  # levers active (k=1: 12, 37, 62, 87)
+OTHER_MEAL_INTERVAL = TRIAL_INTERVAL  # the other body is fed on its own clock, from a random offset each episode
+
+HUNGER = per_step(0.02)  # energy lost per step
+PELLET = 0.5  # energy from one meal, capped at 1 (per trial, so not rescaled)
+REGENERATION = per_step(0.01)  # health gained per step while energy > 0
+STARVATION = per_step(0.05)  # health lost per step while energy is 0
+SHOCK_HEALTH = 0.6  # health lost to one shock, in total
+SHOCK_STEPS = max(1, round(3 / TIME_COMPRESSION))  # a shock lasts this many steps; the body screams throughout
+SHOCK_LOSS = round(SHOCK_HEALTH / SHOCK_STEPS, 12)  # health lost per shock step
 BETA = 10  # reward scale
 DEAD_DRIVE = 2.0
 TOLERANCE = 1e-9  # values this close to 0 count as 0, so float error can't keep a body alive or fed

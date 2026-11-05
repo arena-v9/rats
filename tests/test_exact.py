@@ -5,9 +5,14 @@ from train import SCHEDULES, epsilon
 
 
 def test_in_the_pilot_the_lit_lever_is_worse_and_more_so_at_low_health():
-    gaps = [exact_q(h, 0.5, "lit", True) - exact_q(h, 0.5, "unlit", True) for h in (1.0, 0.8, 0.6)]
-    assert gaps[0] == pytest.approx(-1.70, abs=0.01)  # at gamma 0.95 (independent simulation gave -1.70)
+    gaps = [exact_q(h, 0.5, "lit", True) - exact_q(h, 0.5, "unlit", True) for h in (1.0, 0.8, 0.7)]
     assert gaps[0] > gaps[1] > gaps[2] < 0
+
+
+def test_time_compression_keeps_the_lit_levers_disadvantage():
+    """Version 3.3 (no compression): -1.70 at full health (independent simulation); compression must keep it close."""
+    gap = exact_q(1.0, 0.5, "lit", True) - exact_q(1.0, 0.5, "unlit", True)
+    assert gap == pytest.approx(-1.70, abs=0.1)
 
 
 def test_a_shock_at_low_health_kills():

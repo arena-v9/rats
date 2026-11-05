@@ -1,6 +1,6 @@
 import numpy as np
 
-from env import LEVER_A, LEVER_B, REST, TRIAL_STEPS, LeverTask
+from env import EPISODE_STEPS, LEVER_A, LEVER_B, REST, SHOCK_STEPS, TRIAL_STEPS, LeverTask
 from recording import STEP, Recorder, episode, episodes, read
 
 
@@ -28,7 +28,7 @@ def test_records_each_step_with_what_it_caused(tmp_path):
     assert press["agent_fed"] == 1 and press["agent_shock"] == 2 and press["agent_scream"] == 1
     assert press["agent_after"][0] < press["agent_before"][0]  # the shock cost health
     assert steps["agent_shock"].sum() == 2  # one shock started, nothing else
-    assert steps["agent_scream"][TRIAL_STEPS[0]:].tolist() == [1, 1, 1, 0]
+    assert steps["agent_scream"][TRIAL_STEPS[0]:].tolist() == [1] * SHOCK_STEPS + [0] * (4 - SHOCK_STEPS)
 
 
 def test_pressing_the_unlit_lever_feeds_without_shock(tmp_path):
@@ -43,15 +43,17 @@ def test_random_shocks_are_marked_as_random(tmp_path):
 
 def test_episodes_split_at_resets_and_count_presses(tmp_path):
     first = [REST] * TRIAL_STEPS[0] + [LEVER_A] + [REST] * (TRIAL_STEPS[1] - TRIAL_STEPS[0] - 1) + [LEVER_B]
-    actions = first + [REST] * (100 - len(first)) + [REST] * 10  # one full episode, then 10 steps of the next
+    # One full episode, then the next one up to (not including) its first trial
+    actions = first + [REST] * (EPISODE_STEPS - len(first)) + [REST] * TRIAL_STEPS[0]
     steps = play(tmp_path / "r.bin", actions)
-    listing = episodes(steps, phase1_steps=50)
-    assert listing["count"] == 2 and listing["start"] == [0, 100] and listing["length"] == [100, 10]
+    listing = episodes(steps, phase1_steps=EPISODE_STEPS // 2)
+    assert listing["count"] == 2 and listing["start"] == [0, EPISODE_STEPS]
+    assert listing["length"] == [EPISODE_STEPS, TRIAL_STEPS[0]]
     assert listing["lit_presses"] == [1, 0] and listing["unlit_presses"] == [1, 0]
     assert listing["rests"] == [2, 0]  # trials 3 and 4 of the first episode; the second ends before its first trial
     assert listing["end"] == [2, 0] and listing["phase"] == [1, 2]
-    one = episode(steps, 100, 10)
-    assert one["t"] == list(range(10)) and len(one["q"]) == 10
+    one = episode(steps, EPISODE_STEPS, TRIAL_STEPS[0])
+    assert one["t"] == list(range(TRIAL_STEPS[0])) and len(one["q"]) == TRIAL_STEPS[0]
 
 
 def test_a_partly_written_record_is_ignored(tmp_path):
