@@ -233,7 +233,7 @@ buffer sizes. On this schedule they mean:
 | 100k | never (the run ends at 120k) | never forgotten |
 
 Per buffer size: shocked and never-shocked groups, seeds 1–10 each, plus the pilot (lit lever shocks the agent) on
-seeds 1–3 as the positive control at that buffer size. 69 runs, eight at a time. Runs in `runs_archive/exp1/buf20k/`,
+seeds 1–3 as the positive control at that buffer size. 69 runs, eight at a time. Runs in `runs_archive/exp1_uncompressed/buf20k/`,
 `buf50k/`, `buf100k/`.
 
 **Measures.** As in version 3, per buffer size, with the main window redefined for the quick schedule: **the mean of
@@ -255,7 +255,7 @@ negative for longer with a larger buffer? Each pilot must pass for its buffer si
 ### Results (experiment 1, buffer ablation)
 
 **Stopped after the 20k buffer** to compress time first (version 4): the 20k-buffer runs are complete (10 shocked, 10
-never shocked, 3 pilots, in `runs_archive/exp1/buf20k/`); one 50k run finished; the rest never started. Not analysed yet. Runs
+never shocked, 3 pilots, in `runs_archive/exp1_uncompressed/buf20k/`); one 50k run finished; the rest never started. Not analysed yet. Runs
 from the first batch record commit `b31c147`, later ones `4db54b9` or `e7c792f`: the training code is the same in all
 three (only the analysis and the viewer changed).
 
@@ -354,11 +354,11 @@ for the shocked group; phase 2 32k steps), buffers of 8k, 20k and 40k steps (20k
 | 40k | never (the run ends at 48k) | never forgotten |
 
 Per buffer size: shocked and never-shocked groups, seeds 1–5 each, and the pilot on seeds 1–3 (positive control: its
-lit-lever share must stay low for that buffer size's result to count). 39 runs, in `runs/exp2/buf8k/`, `buf20k/`,
+lit-lever share must stay low for that buffer size's result to count). 39 runs, in `runs/exp1/buf8k/`, `buf20k/`,
 `buf40k/`. (Planned with seeds 1–10; cut to 1–5 for faster results while the 8k buffer was running, before any
 result was looked at. 5 vs 5 runs is the fewest for which the permutation test can reach p < 0.05: smallest possible
 p = 2/252 ≈ 0.008; with 3 vs 3 it would be 0.10. The 8k-buffer seeds 6–10 already trained or started are set aside in
-`runs_archive/exp2_extra_seeds/`, so every buffer size is analysed on the same seeds.) **Measures** as before; main window: the 18k, 20k, 22k and 24k checkpoints (the first 8k steps of phase 2,
+`runs_archive/exp1_extra_seeds/`, so every buffer size is analysed on the same seeds.) **Measures** as before; main window: the 18k, 20k, 22k and 24k checkpoints (the first 8k steps of phase 2,
 the same trial time as version 3.3's 45k–60k). H1 tested at each buffer size; the buffer question as above.
 
 ### Predictions (experiment 1 with version 4.1)
