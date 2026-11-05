@@ -298,7 +298,24 @@ target network syncs after the same number of trials either way). If 1 matches v
 
 ### Results (version 4)
 
-*Not run yet.*
+**Pilot: reliable at both settings** (quick schedule, 5 seeds each; runs in `runs/v4_updates1/` and `runs/v4_updates5/`):
+
+| | Version 3.3 | Version 4, 1 update/step | Version 4, 5 updates/step |
+|---|---|---|---|
+| Minutes per run | 8.1 | 2.3 | 8.2 |
+| Checkpoints above 20% lit-lever share | 0 / 80 | 0 / 80 | 0 / 80 (highest exactly 20%, first checkpoint) |
+| Final lit-lever share | 0% on every seed | 0% on every seed | 0% on every seed |
+| Learned − exact Q-gap, second half of phase 2 | about ±0.2 | −0.3 to −0.6 | about ±0.1 |
+| Phase-2 deaths | 19 / 4,001 episodes | 41 / 4,009 | 14 / 4,003 |
+| Phase-1 deaths after ε reached its floor | 2.2% | 2.5% | 2.6% |
+
+- Time compression keeps the pilot as reliable as version 3.3.
+- With one update per step (5 per trial instead of 25), avoidance holds but the values are less accurate: the network
+  rates the lit lever about 0.5 worse than it is, and dies three times as often in phase 2. With five updates per step
+  (version 3.3's updates per trial) the values match the exact ones and deaths fall to 14. Both have the same one-step
+  shock, so the extra deaths come from training less, not from the shock killing at 0.60 instead of 0.57.
+- Compression's speed-up comes only from training less per trial: at five updates per step a run costs the same as
+  in version 3.3.
 
 ## Earlier versions of experiment 1
 
