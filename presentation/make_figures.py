@@ -226,47 +226,9 @@ def positive_control() -> None:
     save(fig, "5_positive_control.png")
 
 
-def before_forgetting() -> None:
-    """
-    Each run's lit-lever share 2k steps into phase 2 (18k) next to its main-window average (18k–24k, as in figure 1).
-    Buffer 40k (at 18k the 20k-buffer runs are identical).
-    """
-    rng = np.random.default_rng(2)
-    at_18k = lambda runs: 100 * np.array([next(c["lit_share"] for c in r["checkpoints"] if c["step"] == 18000) for r in runs])
-    window = lambda runs: 100 * np.array([main_window(r) for r in runs])
-    fig, axes = plt.subplots(1, 2, figsize=(10, 5.6), sharey=True)
-    fig.subplots_adjust(left=0.1, right=0.97, top=0.74, bottom=0.12, wspace=0.08)
-    panels = ((at_18k, "2k steps into phase 2\n(checkpoint at 18k)", "p = 0.056"),
-              (window, "Main window average\n(18k–24k, as in the main result)", "p = 0.008"))
-    for ax, (measure, name, p_text) in zip(axes, panels):
-        for j, group in enumerate(("shocked", "never_shocked")):
-            v = measure(load(RUNS / "buf40k" / group))
-            ax.scatter(j + np.linspace(-0.08, 0.08, len(v)), v, s=40, color=COLORS[group], alpha=0.55, linewidths=0, zorder=3)
-            low, high = bootstrap_ci(v, rng)
-            ax.plot([j, j], [low, high], color=COLORS[group], lw=2, zorder=4)
-            ax.plot([j - 0.14, j + 0.14], [v.mean()] * 2, color=COLORS[group], lw=3, zorder=5)
-            ax.text(j + 0.18, v.mean(), f"{v.mean():.0f}%", color=INK2, fontsize=10.5, va="center")
-        ax.axhline(50, color=MUTED, lw=1, ls=(0, (4, 3)), zorder=2)
-        ax.set_title(name, fontsize=11, color=INK, loc="left")
-        ax.set_xticks([0, 1], [LABELS["shocked"], LABELS["never_shocked"]])
-        ax.tick_params(axis="x", colors=INK2, labelsize=10.5, length=0)
-        ax.set_xlim(-0.5, 1.6)
-        ax.grid(axis="x", visible=False)
-        ax.text(1.55, 95, p_text, ha="right", fontsize=10.5, color=INK if p_text.endswith("0.008") else MUTED,
-                fontweight="bold" if p_text.endswith("0.008") else "normal")
-    axes[0].set_ylim(0, 100)
-    axes[0].set_yticks([0, 25, 50, 75, 100], ["0%", "25%", "50%", "75%", "100%"])
-    axes[0].set_ylabel("Presses on the lever that shocks the other")
-    title(fig, "Avoidance is strongest right away, before the agent unlearns its own pain",
-          "Replay buffer 40k. Dots: runs (5 per group). Bars: mean with 95% bootstrap interval. The 18k checkpoint is "
-          "exploratory\n(chosen after seeing the results); the main window is the planned measure.")
-    save(fig, "6_before_forgetting.png")
-
-
 if __name__ == "__main__":
     main_result()
     time_course()
     scream_meaning()
     manipulation_check()
     positive_control()
-    before_forgetting()
