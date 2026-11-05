@@ -14,7 +14,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.stats import t as stats_t
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNS, ARCHIVE, OUT = ROOT / "runs" / "exp1", ROOT / "runs_archive", Path(__file__).resolve().parent / "out"
@@ -112,7 +111,7 @@ def main_result() -> None:
 def time_course() -> None:
     """Lit-lever share through phase 2, one panel per buffer size."""
     fig, axes = plt.subplots(1, 3, figsize=(12, 5), sharey=True)
-    fig.subplots_adjust(left=0.07, right=0.985, top=0.71, bottom=0.14, wspace=0.08)
+    fig.subplots_adjust(left=0.07, right=0.985, top=0.74, bottom=0.14, wspace=0.08)
     forget = {"buf8k": 24, "buf20k": 36, "buf40k": None}  # step (k) by which phase-1 memories have left the buffer
     for ax, buffer in zip(axes, BUFFERS):
         first, last = load(RUNS / buffer / "shocked")[0]["main_window"]
@@ -123,15 +122,9 @@ def time_course() -> None:
             keep = steps >= 16
             # Raw checkpoint means as faint dots (including the end of phase 1, 16k) ...
             ax.scatter(steps[keep], mean[keep], s=14, color=COLORS[group], alpha=0.3, linewidths=0, zorder=3)
-            # ... and the trend: a centred rolling mean over 3 checkpoints (6k steps), within phase 2 only, with the
-            # 95% confidence interval of the group mean across runs (t distribution, 5 runs) as a band
+            # ... and the trend: a centred rolling mean over 3 checkpoints (6k steps), within phase 2 only
             phase2 = steps > 16
-            per_run = 100 * np.array([rolling_mean(run[phase2], 3) for run in v])
-            centre = per_run.mean(axis=0)
-            half = stats_t.ppf(0.975, len(per_run) - 1) * per_run.std(axis=0, ddof=1) / np.sqrt(len(per_run))
-            low, high = np.clip(centre - half, 0, 100), np.clip(centre + half, 0, 100)  # a share stays within 0–100%
-            ax.fill_between(steps[phase2], low, high, color=COLORS[group], alpha=0.14, lw=0, zorder=2)
-            ax.plot(steps[phase2], centre, color=COLORS[group], zorder=4)
+            ax.plot(steps[phase2], rolling_mean(mean[phase2], 3), color=COLORS[group], zorder=4)
         ax.axhline(50, color=MUTED, lw=1, ls=(0, (4, 3)), zorder=2)
         if forget[buffer]:
             ax.axvline(forget[buffer], color=INK2, lw=1, zorder=2)
@@ -140,7 +133,7 @@ def time_course() -> None:
             ax.text(47.5, 4, "own shocks stay\nin memory", fontsize=8.5, color=INK2, va="bottom", ha="right")
         ax.set_title(f"Replay buffer {BUFFERS[buffer]}", fontsize=11.5, color=INK, loc="left")
         ax.set_xlim(16, 48)
-        ax.set_ylim(0, 90)
+        ax.set_ylim(0, 85)
         ax.set_xticks([16, 24, 32, 40, 48], ["16k", "24k", "32k", "40k", ""] if buffer != "buf40k"
                       else ["16k", "24k", "32k", "40k", "48k"])
         ax.set_xlabel("Training step (phase 2)")
@@ -148,10 +141,10 @@ def time_course() -> None:
     axes[0].set_ylabel("Presses on the lever that shocks the other")
     axes[0].text(18.2, 80, "main\nwindow", fontsize=8.5, color=MUTED, va="top")
     handles = [plt.Line2D([], [], color=COLORS[g], lw=2, label=LABELS[g]) for g in COLORS]
-    axes[0].legend(handles=handles, loc="upper left", bbox_to_anchor=(0, 1.22), ncol=2, fontsize=10.5)
+    axes[0].legend(handles=handles, loc="upper left", bbox_to_anchor=(0, 1.2), ncol=2, fontsize=10.5)
     title(fig, "The avoidance is temporary, and lasts as long as the agent's own pain stays in memory",
-          "Lines: mean of 5 runs, smoothed over 3 neighbouring checkpoints (6k steps); bands: 95% confidence "
-          "interval across runs.\nFaint dots: unsmoothed checkpoint means. Dashed: indifferent (50%).")
+          "Lines: mean of 5 runs, smoothed over 3 neighbouring checkpoints (6k steps). Faint dots: unsmoothed "
+          "checkpoint means. Dashed: indifferent (50%).")
     save(fig, "2_time_course.png")
 
 
