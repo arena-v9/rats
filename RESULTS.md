@@ -353,9 +353,12 @@ for the shocked group; phase 2 32k steps), buffers of 8k, 20k and 40k steps (20k
 | 20k | 20k steps into phase 2 (step 36k) | forgotten late |
 | 40k | never (the run ends at 48k) | never forgotten |
 
-Per buffer size: shocked and never-shocked groups, seeds 1–10 each, and the pilot on seeds 1–3 (positive control: its
-lit-lever share must stay low for that buffer size's result to count). 69 runs, in `runs/exp2/buf8k/`, `buf20k/`,
-`buf40k/`. **Measures** as before; main window: the 18k, 20k, 22k and 24k checkpoints (the first 8k steps of phase 2,
+Per buffer size: shocked and never-shocked groups, seeds 1–5 each, and the pilot on seeds 1–3 (positive control: its
+lit-lever share must stay low for that buffer size's result to count). 39 runs, in `runs/exp2/buf8k/`, `buf20k/`,
+`buf40k/`. (Planned with seeds 1–10; cut to 1–5 for faster results while the 8k buffer was running, before any
+result was looked at. 5 vs 5 runs is the fewest for which the permutation test can reach p < 0.05: smallest possible
+p = 2/252 ≈ 0.008; with 3 vs 3 it would be 0.10. The 8k-buffer seeds 6–10 already trained or started are set aside in
+`runs_archive/exp2_extra_seeds/`, so every buffer size is analysed on the same seeds.) **Measures** as before; main window: the 18k, 20k, 22k and 24k checkpoints (the first 8k steps of phase 2,
 the same trial time as version 3.3's 45k–60k). H1 tested at each buffer size; the buffer question as above.
 
 ### Predictions (experiment 1 with version 4.1)
