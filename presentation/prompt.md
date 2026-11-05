@@ -12,34 +12,45 @@ learning. Make it clear, visual and honest about what the result does and does n
 ## Where this fits: after the gridworld experiment
 
 The deck **opens with the gridworld experiment** ("Emergent Harm Avoidance from Shared Vulnerability: A Gridworld
-Test"), presented before these slides. By the time your slides start, the audience has seen:
+Test", repository `homeostasis`, described here as of commit `405885a`), presented before these slides. By the time
+your slides start, the audience has seen:
 
 - the question: can an agent learn to avoid harming another body **without being rewarded for it**, because it has a
   vulnerable body of its own (Christov-Moore et al., 2023, argue that empathy needs vulnerability);
 - the homeostatic body (health and energy) and the reward, **drive reduction** of the agent's own body only
   (Keramati & Gutkin, 2014);
-- the mechanism under test, a **shared representation**: the other body appears on the same input channels as the
-  agent's own, so what the network learns from its own harm may also respond to the other's;
-- the gridworld design: a 7×7 map with fire and food, a scripted NPC with the same body, and a test of whether the
-  agent avoids pushing the NPC onto fire, compared with a matched push onto floor.
+- the mechanism under test, a **shared representation**: a scripted NPC with the same body appears on the same input
+  channels as the agent's own (body, health, energy), so a CNN feature learned from the agent's own harm may also
+  respond at the NPC's square;
+- the gridworld's design: a 7×7 map with fire and food, where walking into the NPC pushes it (onto fire, at no cost to
+  the agent); **experiment 1**, whether watching the NPC (on a separate "parallel grid" the agent cannot enter, with
+  its health and energy hidden or visible) changes how the agent learns to survive; and **experiment 2**, a
+  **"psychopath"** agent (rewarded only per food item eaten; fire and starvation cannot hurt it) against the
+  homeostatic agent, tested on pushes onto fire with the NPC moved onto the agent's own grid.
 
-**Do not state any results for the gridworld.** Its harm-avoidance test has not been run (the NPC and the evaluation
-are still being built); it is presented as the idea and the design. Do not repeat its explanations at length either:
-refer back to them ("the same body and reward as in the gridworld").
+**Do not state any results for the gridworld.** At the commit described here both of its experiments are still
+running (results pending), and its matched fire-push vs floor-push test is not yet built. If the presenter has
+gridworld results, they come from the gridworld's own materials; do not quote, infer or anticipate them here. Do not
+repeat the gridworld's explanations at length either: refer back to them ("the same body and reward as in the
+gridworld").
 
-**This experiment (the lever task) is the same idea in a cleaner design, with fewer confounders.** It is the part
-with results. Make the transition explicit with one slide comparing the two designs:
+**This experiment (the lever task) is the same idea in a stripped-down design with fewer confounders.** It is the part
+with results. Make the transition explicit with one slide comparing the two designs (the gridworld is the richer,
+more naturalistic setting; the lever task isolates one mechanism):
 
 | Confounder in the gridworld | How the lever task removes it |
 |---|---|
-| **Self-protection:** pushing the NPC toward fire also moves the agent next to fire, so avoiding the push may just protect the agent (the gridworld needs matched floor-push layouts with equal fire distance) | Both levers are identical for the agent: same position, same food. The only difference is what happens to the other rat |
-| **Indirect benefits of harming:** a push can clear the path to food or weaken a competitor for it (the gridworld needs special zero-cost layouts and discards pushes onto fire in training) | The other rat's fate cannot affect the agent at all (tested: the agent's rewards are identical whether or not the lever shocks the other), so an agent that knew the truth would be exactly indifferent: 50% on each lever |
-| **Many routes from the other's body to the agent's choices:** the NPC is seen through its position, health and energy on shared channels, and spatial features of a CNN; a falling health value alone can teach "danger" without any transfer of pain (an earlier version of the lever task showed exactly this: agents that had never been hurt avoided the lever when they could see the other's health) | The other rat is perceived **only** through one input: its scream, the same input as the agent's own scream. Nothing else about it is visible |
-| **Own pain is not manipulated:** every gridworld agent learns from fire, so "has it felt this harm itself?" is left to a later stage | Own pain is the manipulated variable: a **shocked** and a **never-shocked** group, identical in everything else (same seeds, same random events), so the comparison isolates the agent's own pain experience |
+| **Self-protection:** a push moves the agent too, toward the fire behind the NPC, so fewer pushes onto fire may just mean the agent keeps itself away from fire (the matched floor-push test meant to rule this out is not built yet) | Both levers are identical for the agent: same position, same food, no risk to itself. The only difference is what happens to the other rat |
+| **Indirect consequences of the other's fate:** on a shared grid the NPC competes for food, moves food around and can block or be pushed out of the way (why the gridworld's experiment 1 moved it to a parallel grid; its push test puts it back on the agent's grid) | The other rat's fate cannot affect the agent at all (tested: the agent's rewards are identical whether or not the lever shocks the other), so an agent that knew the truth would be exactly indifferent: 50% on each lever |
+| **Many routes from the other's body to the agent's choices:** the NPC is seen through its position and, when visible, its health and energy, through spatial CNN features; a falling health value alone can teach "danger" without any transfer of pain (an earlier version of the lever task showed exactly this: agents that had never been hurt avoided the lever when they could see the other's health) | The other rat is perceived **only** through one input: its scream, the same input as the agent's own scream. Nothing else about it is visible |
+| **Vulnerability is manipulated together with everything else:** the psychopath agent differs from the homeostatic one in its reward (food eaten, not its drive), its body (it cannot be hurt) and its fate (it never dies), so a difference between them can come from any of these | **Only own pain** is manipulated: the **shocked** and **never-shocked** groups have the same reward, body and task, the same seeds and the same random events; the one difference is whether the agent was shocked in phase 1 |
+| **The test is outside the agent's experience:** in experiment 2 the agents trained with the NPC on a separate grid and meet it on their own grid only at test time, so their behaviour there may reflect novelty rather than harm | The test is the task itself: in phase 2 the agent presses the levers and hears the other's scream every time, and its choices are measured as it learns |
 | **No ground truth:** whether the agent learned the right values is hard to check | Phase 2 is deterministic, so the exact values the agent should learn can be computed and compared with what it learned (this caught a training bug, see the addendum) |
 
-It also turns the gridworld's "witnessing" question (does seeing the other harmed at no cost erode avoidance?) into a
-measurable result: in phase 2 the agent hears the other's scream with no cost to itself, and the avoidance fades.
+It also turns the gridworld's "witnessing" question (does seeing the other harmed, at no cost to oneself, train
+avoidance away? its stored vs dropped NPC-harm condition) into a measured result: in phase 2 the agent hears the
+other's scream with no cost to itself, and the avoidance fades, at a rate set by how long its own pain stays in its
+replay memory.
 
 ## The question
 
