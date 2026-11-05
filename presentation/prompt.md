@@ -28,11 +28,26 @@ your slides start, the audience has seen:
   **"psychopath"** agent (rewarded only per food item eaten; fire and starvation cannot hurt it) against the
   homeostatic agent, tested on pushes onto fire with the NPC moved onto the agent's own grid.
 
-**Do not state any results for the gridworld.** At the commit described here both of its experiments are still
-running (results pending), and its matched fire-push vs floor-push test is not yet built. If the presenter has
-gridworld results, they come from the gridworld's own materials; do not quote, infer or anticipate them here. Do not
-repeat the gridworld's explanations at length either: refer back to them ("the same body and reward as in the
-gridworld").
+**The gridworld's results** (5 runs per group, trained on 5 November with the code at `405885a`; its design plans 15
+per group; figures in `homeostasis/presentation/out/`, listed under Assets). These are presented in the gridworld part;
+refer back to them, do not re-present them:
+
+- **Experiment 1: watching the NPC makes the agent more reliable at surviving.** Reliability (share of evaluations
+  after 100k steps with at least 95% survival): no NPC 66%, NPC with its state hidden 85%, NPC with its state visible
+  94%. Watching the NPC: +18 points (95% interval +9 to +28, p = 0.024), and fewer starvation deaths (58 vs 32 per
+  1,000 test episodes, p = 0.032). Seeing its state as well: +9 points, not clear (p = 0.32). Why is not yet tested
+  (candidates: shared features, or a moving input that stops the agent getting stuck).
+- **Experiment 2: the homeostatic agent pushes the NPC onto fire less than the psychopath, but pushes less overall
+  too.** Pushes onto fire per test episode: psychopath with the NPC 0.14, homeostatic with the NPC 0.05 (p = 0.008).
+  All pushes: 1.52 vs 0.91 (p = 0.024). Watching the NPC in training made no clear difference for either agent
+  (homeostatic with vs without the NPC: 0.05 vs 0.07 onto fire, p = 0.46).
+- **Why the gridworld cannot settle it:** a push onto fire leaves the agent next to fire, so a homeostatic agent that
+  keeps away from fire for its own sake would push onto fire less, with no harm avoidance at all; the matched
+  floor-push test that would separate the two is not built. This is the bridge to the lever task: a design where the
+  harmful and the harmless action are identical for the agent.
+
+Do not repeat the gridworld's explanations at length: refer back to them ("the same body and reward as in the
+gridworld", "as in the gridworld's experiment 2").
 
 **This experiment (the lever task) is the same idea in a stripped-down design with fewer confounders.** It is the part
 with results. Make the transition explicit with one slide comparing the two designs (the gridworld is the richer,
@@ -40,7 +55,7 @@ more naturalistic setting; the lever task isolates one mechanism):
 
 | Confounder in the gridworld | How the lever task removes it |
 |---|---|
-| **Self-protection:** a push moves the agent too, toward the fire behind the NPC, so fewer pushes onto fire may just mean the agent keeps itself away from fire (the matched floor-push test meant to rule this out is not built yet) | Both levers are identical for the agent: same position, same food, no risk to itself. The only difference is what happens to the other rat |
+| **Self-protection:** a push moves the agent too, toward the fire behind the NPC, so fewer pushes onto fire may just mean the agent keeps itself away from fire. Experiment 2 shows exactly this ambiguity: the homeostatic agent pushes onto fire less (0.05 vs 0.14 per episode) but also pushes less overall (0.91 vs 1.52), and the matched floor-push test is not built | Both levers are identical for the agent: same position, same food, no risk to itself. The only difference is what happens to the other rat |
 | **Indirect consequences of the other's fate:** on a shared grid the NPC competes for food, moves food around and can block or be pushed out of the way (why the gridworld's experiment 1 moved it to a parallel grid; its push test puts it back on the agent's grid) | The other rat's fate cannot affect the agent at all (tested: the agent's rewards are identical whether or not the lever shocks the other), so an agent that knew the truth would be exactly indifferent: 50% on each lever |
 | **Many routes from the other's body to the agent's choices:** the NPC is seen through its position and, when visible, its health and energy, through spatial CNN features; a falling health value alone can teach "danger" without any transfer of pain (an earlier version of the lever task showed exactly this: agents that had never been hurt avoided the lever when they could see the other's health) | The other rat is perceived **only** through one input: its scream, the same input as the agent's own scream. Nothing else about it is visible |
 | **Vulnerability is manipulated together with everything else:** the psychopath agent differs from the homeostatic one in its reward (food eaten, not its drive), its body (it cannot be hurt) and its fate (it never dies), so a difference between them can come from any of these | **Only own pain** is manipulated: the **shocked** and **never-shocked** groups have the same reward, body and task, the same seeds and the same random events; the one difference is whether the agent was shocked in phase 1 |
@@ -154,6 +169,18 @@ Use this wording (or close to it) for the conclusion:
 | `3_scream_meaning.png` | Scream probe through phase 2: shocked agents per buffer size vs never-shocked | Why |
 | `1_phase1_conditioning.mp4` | A shocked agent in phase 1: random shocks, its own scream ("AAGH!"), captions per step (31 s) | Phase 1 |
 | `2_side_by_side.mp4` | Phase 2, lever B lit for both: the shocked agent presses only the unlit lever; the never-shocked one presses the lit lever 3 times and the other rat screams each time; counter of lit presses (31 s) | Phase 2 |
+
+Figures for the gridworld part (in `homeostasis/presentation/out/`, same palette and style; for the slides before
+yours, and for the transition slide if a picture of the confound helps):
+
+| File | What it shows |
+|---|---|
+| `design_1_push.png` | Before and after a push: the NPC pushed onto fire, at no cost to the agent |
+| `design_2_shared_channels.png` | The example state's input channels: both bodies on body, health and energy; only self separates them |
+| `design_3_experiments.png` | Training on the parallel grid (the NPC on a grid the agent can't enter) and experiment 2's test (the NPC moved within reach) |
+| `results_1_exp1_reliability.png` | Experiment 1: reliability by group, runs as dots, p-values |
+| `results_2_exp1_survival.png` | Experiment 1: mean survival over training by group |
+| `results_3_exp2_pushes.png` | Experiment 2: all pushes and pushes onto fire per test episode, psychopath vs homeostatic, with and without the NPC |
 
 The videos show a pixel-art side view: the agent's chamber (levers A and B, the lamp above the lit lever, a food
 hopper) on the left, the other rat's chamber on the right, a mesh wall between them that lets screams through, and
