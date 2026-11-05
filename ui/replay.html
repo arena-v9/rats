@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lever Task Replay</title>
+<!--
+  Step-by-step replay of training episodes, from runs/<group>/seed_<n>/recording.bin (written by train.py). Served by
+  ui/serve.py: /episodes.json lists a run's episodes, /episode.json gives one. The scene is a side view of the two
+  chambers: the agent's (levers, lamps, food hopper) and the other rat's, with a shared wall that lets screams through.
+  One frame is one training step: the action taken, what it caused, and health and energy after the step.
+-->
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11, 11, 11, 0.10);
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a;
+  --good: #0ca30c; --serious: #ec835a; --critical: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10);
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1120px; margin: 0 auto; padding: 20px 16px 48px; }
+h1 { font-size: 1.35rem; margin: 0 0 2px; }
+p { margin: 6px 0; }
+.lede { color: var(--ink-2); margin: 0 0 14px; max-width: 760px; }
+.small { color: var(--muted); font-size: 0.8rem; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--grid); margin-bottom: 14px; }
+.tabs a { padding: 7px 12px; margin-bottom: -1px; color: var(--ink-2); text-decoration: none; border-bottom: 2px solid transparent; }
+.tabs a:hover { color: var(--ink); }
+.tabs a[aria-current="page"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+.controls { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin: 0 0 10px; }
+.controls label { color: var(--ink-2); font-size: 0.85rem; display: flex; gap: 6px; align-items: center; }
+select, button, input[type=number] { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
+input[type=number] { width: 6.5em; font-variant-numeric: tabular-nums; }
+button { cursor: pointer; min-width: 2.2em; }
+button:disabled { opacity: 0.45; cursor: default; }
+button.primary { min-width: 5.5em; font-weight: 600; }
+input[type=range] { flex: 1; min-width: 160px; accent-color: var(--ink-2); }
+.status-line { margin-left: auto; color: var(--muted); font-size: 0.8rem; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.card h3 { font-size: 0.9rem; margin: 0 0 2px; }
+.card .sub { color: var(--muted); font-size: 0.78rem; margin: 0 0 8px; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 12px; align-items: start; }
+@media (max-width: 820px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+.stage { background: #101014; border-radius: 10px; padding: 10px; display: flex; flex-direction: column; align-items: center; }
+#scene { image-rendering: pixelated; image-rendering: crisp-edges; display: block; max-width: 100%; }
+.chamber-labels { position: relative; height: 18px; color: #9a9aa8; font-size: 0.75rem; margin-top: 4px; }
+.chamber-labels span { position: absolute; text-align: center; white-space: nowrap; }
+.episode-head { font-size: 0.85rem; color: var(--ink-2); margin: 0 0 8px; font-variant-numeric: tabular-nums; }
+.episode-head strong { color: var(--ink); }
+.hud dl { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; font-size: 0.85rem; }
+.hud dt { color: var(--muted); }
+.hud dd { margin: 0; font-variant-numeric: tabular-nums; text-align: right; }
+.hud h4 { font-size: 0.78rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin: 12px 0 4px; }
+.hud h4:first-child { margin-top: 0; }
+.big { font-size: 1.05rem; font-weight: 600; }
+.qrow { display: grid; grid-template-columns: 4.6em 1fr 3.6em; gap: 6px; align-items: center; font-size: 0.82rem; margin: 2px 0; }
+.qrow .track { height: 10px; background: var(--grid); border-radius: 2px; position: relative; overflow: hidden; }
+.qrow .fill { position: absolute; top: 0; bottom: 0; left: 0; background: var(--axis); }
+.qrow.chosen .fill { background: var(--ink-2); }
+.qrow.chosen { font-weight: 600; }
+.qrow .val { text-align: right; font-variant-numeric: tabular-nums; }
+.pill { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 0.75rem; border: 1px solid var(--border); color: var(--ink-2); }
+.pill.on { background: #ff6b8a; border-color: #ff6b8a; color: #fff; }
+.strip-wrap { margin-top: 12px; }
+canvas.strip { display: block; width: 100%; cursor: pointer; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--ink-2); font-size: 0.78rem; margin: 6px 0 0; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.empty { color: var(--muted); padding: 18px 0; }
+kbd { font: 0.75rem ui-monospace, monospace; border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; background: var(--surface); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Lever task, experiment 1</h1>
+  <p class="lede">Replay of training episodes, one frame per step. On trial steps the levers come out; the lamp marks the
+    lit lever. The agent's reward is only its own drive reduction.</p>
+  <nav class="tabs" aria-label="Views">
+    <a href="index.html#training">Training</a>
+    <a href="index.html#testing">Testing</a>
+    <a href="index.html#hypothesis">Hypothesis</a>
+    <a href="replay.html" aria-current="page">Replay</a>
+  </nav>
+
+  <div class="controls">
+    <label>Run <select id="run"></select></label>
+    <label>Find <select id="find">
+      <option value="any">any episode</option>
+      <option value="lit">pressed the lit lever</option>
+      <option value="unlit">pressed the unlit lever</option>
+      <option value="agent_shock">agent shocked</option>
+      <option value="other_shock">other shocked</option>
+      <option value="death">agent died</option>
+      <option value="greedy">no random actions</option>
+    </select></label>
+    <button id="find-prev" type="button" title="Previous matching episode">◀</button>
+    <button id="find-next" type="button" title="Next matching episode">▶</button>
+    <button id="phase2" type="button">Phase 2 start</button>
+    <label><input type="checkbox" id="follow"> Follow latest</label>
+    <span class="status-line" id="status"></span>
+  </div>
+  <div class="controls">
+    <label>Episode <input type="number" id="episode-number" min="0" step="1"></label>
+    <input type="range" id="episode-slider" min="0" max="0" value="0" aria-label="Episode">
+  </div>
+  <canvas class="strip" id="overview" height="44" aria-label="Lit-lever share of presses across all episodes; click to jump"></canvas>
+  <p class="small" id="overview-caption">Bars: share of trial presses on the lit lever across episodes (dashed line: 50%). Red ticks: deaths. Click to jump.</p>
+
+  <div id="body"></div>
+</main>
+
+<template id="player-template">
+  <p class="episode-head" id="episode-head"></p>
+  <div class="layout">
+    <div>
+      <div class="stage" id="stage">
+        <canvas id="scene" width="128" height="72"></canvas>
+        <div class="chamber-labels" id="chamber-labels"><span id="label-agent">Agent</span><span id="label-other">Other rat</span></div>
+      </div>
+      <div class="controls" style="margin-top:10px">
+        <button id="first" type="button" title="First step">⏮</button>
+        <button id="back" type="button" title="Previous step (←)">◀</button>
+        <button id="play" type="button" class="primary" title="Play / pause (space)">Play</button>
+        <button id="forward" type="button" title="Next step (→)">▶</button>
+        <button id="prev-episode" type="button" title="Previous episode (Shift+←)">⏪ Episode</button>
+        <button id="next-episode" type="button" title="Next episode (Shift+→)">Episode ⏩</button>
+        <label>Speed <select id="speed">
+          <option value="1">1 step/s</option><option value="2">2 steps/s</option><option value="4" selected>4 steps/s</option>
+          <option value="8">8 steps/s</option><option value="16">16 steps/s</option><option value="40">40 steps/s</option>
+        </select></label>
+        <label><input type="checkbox" id="auto-next" checked> Continue to next episode</label>
+      </div>
+      <div class="strip-wrap card">
+        <h3>This episode</h3>
+        <p class="sub">One column per step; click or drag to seek.</p>
+        <canvas class="strip" id="timeline" height="150"></canvas>
+        <div class="legend">
+          <span><i style="background:#ff8a3d"></i>Pressed lit lever</span>
+          <span><i style="background:#46c37b"></i>Pressed unlit lever</span>
+          <span><i style="background:#8a8a96"></i>Rested on a trial</span>
+          <span><i style="background:#ffe14d"></i>Shock (screaming)</span>
+          <span><i style="background:#c58a43"></i>Pellet</span>
+        </div>
+      </div>
+      <p class="small"><kbd>Space</kbd> play/pause · <kbd>←</kbd><kbd>→</kbd> step · <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd> episode</p>
+    </div>
+    <div class="card hud" id="hud"></div>
+  </div>
+</template>
+
+<script>
+"use strict";
+const GROUP_LABELS = { shocked: "Shocked", never_shocked: "Never shocked", pilot_self_shock: "Pilot (lit lever shocks itself)" };
+const ACTIONS = ["A", "B", "rest"];
+const LIST_POLL_MS = 10000;
+const state = {
+  runs: [], run: null, list: null, i: 0, ep: null, frame: 0, playing: false, speed: 4, autoNext: true, follow: false,
+  cache: new Map(), message: null, lastTick: 0, pauseUntil: 0, loading: false,
+};
+
+// ---------- helpers ----------
+const $ = id => document.getElementById(id);
+const fmt = {
+  int: v => v.toLocaleString("en-US"),
+  num: (v, d = 2) => (v < 0 ? "−" : "") + Math.abs(v).toFixed(d),
+  signed: (v, d = 2) => (v < 0 ? "−" : "+") + Math.abs(v).toFixed(d),
+};
+function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function runKey(run) { return `${run.group}/${run.seed}`; }
+function currentRun() { return state.runs.find(r => runKey(r) === state.run); }
+function query(extra = {}) {
+  const [group, seed] = state.run.split("/");
+  return new URLSearchParams({ group, seed, ...extra }).toString();
+}
+
+// ---------- the pixel scene ----------
+// Fixed palette: the scene is a little screen, the same in light and dark themes
+const C = {
+  bg: "#101014", wall: "#23232c", wallEdge: "#3b3b4a", rod: "#5b5b66", rodAlt: "#45454f", base: "#18181d",
+  plate: "#6e6e7c", plateDark: "#4a4a55", bar: "#d0d0dc", lampOff: "#3d3a26", lampOn: "#ffd84a", lampCore: "#fff6c2",
+  hopper: "#6f6150", hopperDark: "#4b4136", pellet: "#c58a43", fur: "#e2ddd2", furShade: "#bdb6a8", pink: "#e796a4",
+  eye: "#1b1b1b", dead: "#7f7f86", shock: "#ffe14d", shockHot: "#ffffff", scream: "#ff6b8a", mesh: "#4a4a58",
+  health: "#e5484d", healthBg: "#3b1d21", energy: "#46c37b", energyBg: "#18341f", label: "#9a9aa8",
+  bubble: "#f5f0e6", bubbleEdge: "#2b2b33", yell: "#d42a3c",
+};
+// Sprites: one character per pixel; "." is transparent
+const SPRITES = {
+  sit: [
+    "..........pp....",
+    "......wwwwppw...",
+    "....wwwwwwwwwk..",
+    "...wwwwwwwwwwwwn",
+    "..wwwwwwwwwwwww.",
+    "tt.sssssssssss..",
+    "..t.ff.....ff...",
+  ],
+  rear: [
+    "....pp....",
+    "...wwwp...",
+    "..wwwwwk..",
+    "..wwwwwwn.",
+    "..wwwww...",
+    ".wwwwwwff.",
+    ".wwwwww...",
+    ".wwwwww...",
+    "wwwwwww...",
+    "wsssssw...",
+    "t.ff.ff...",
+    "tt........",
+  ],
+  dead: [
+    "...ff.....ff....",
+    "..ssssssssssssx.",
+    ".wwwwwwwwwwwwwwn",
+    "tt.wwwwwwwwww...",
+  ],
+};
+const FONT = {
+  A: [".#.", "#.#", "###", "#.#", "#.#"], B: ["##.", "#.#", "##.", "#.#", "##."],
+  H: ["#.#", "#.#", "###", "#.#", "#.#"], E: ["###", "#..", "##.", "#..", "###"],
+  G: ["###", "#..", "#.#", "#.#", "###"], "!": [".#.", ".#.", ".#.", "...", ".#."],
+};
+// Layout, in scene pixels (128 × 72)
+const L = {
+  agent: { x: 3, w: 72, home: 18, homeFed: 18, hopper: 34 },
+  other: { x: 81, w: 44, home: 86, homeFed: 96, hopper: 112 },
+  top: 3, floor: 48, levers: [{ x: 8, label: "A" }, { x: 56, label: "B" }],
+};
+
+let ctx = null;
+function px(x, y, w, h, color) { ctx.fillStyle = color; ctx.fillRect(x, y, w, h); }
+function sprite(rows, x, y, palette, flip = false) {
+  rows.forEach((row, j) => [...row].forEach((ch, i) => {
+    if (ch === "." || !palette[ch]) return;
+    px(flip ? x + row.length - 1 - i : x + i, y + j, 1, 1, palette[ch]);
+  }));
+}
+function text(str, x, y, color) {
+  [...str].forEach((ch, k) => sprite(FONT[ch].map(r => r.replace(/#/g, "x")), x + 4 * k, y, { x: color }));
+}
+
+function drawChamber(c) {
+  px(c.x, L.top, c.w, L.floor - L.top, C.wall);
+  px(c.x, L.top, c.w, 1, C.wallEdge);
+  px(c.x, L.top, 1, 53, C.wallEdge);
+  px(c.x + c.w - 1, L.top, 1, 53, C.wallEdge);
+  px(c.x, L.floor + 3, c.w, 4, C.base);
+  px(c.x, L.floor + 7, c.w, 1, C.wallEdge);
+}
+function drawFloor(c, shocking, flick) {
+  for (let x = c.x + 1; x < c.x + c.w - 1; x++) {
+    const on = shocking && ((x + flick) % 3 !== 0);
+    px(x, L.floor, 1, 3, on ? (flick % 2 ? C.shock : C.shockHot) : (x % 2 ? C.rod : C.rodAlt));
+  }
+}
+function drawHopper(x, fed) {
+  px(x, 36, 7, 7, C.hopper);
+  px(x + 1, 37, 5, 3, C.hopperDark);
+  px(x - 1, 43, 9, 2, C.hopper);
+  px(x, 45, 7, 3, C.hopperDark);
+  if (fed) { px(x + 2, 44, 2, 2, C.pellet); px(x + 4, 45, 1, 1, C.pellet); }
+}
+function drawLever(lever, lit, active, pressed, glow) {
+  const x = lever.x;
+  // Lamp above the lever
+  if (lit) {
+    ctx.fillStyle = `rgba(255, 216, 74, ${glow})`;
+    ctx.fillRect(x + 1, 22, 8, 9);
+    px(x + 2, 24, 6, 5, C.lampOn);
+    px(x + 4, 25, 2, 2, C.lampCore);
+  } else {
+    px(x + 2, 24, 6, 5, C.lampOff);
+  }
+  px(x + 3, 23, 4, 1, C.plateDark);
+  // Plate with its letter; the lever bar comes out on trial steps and dips when pressed
+  px(x, 32, 10, 8, C.plate);
+  px(x, 39, 10, 1, C.plateDark);
+  text(lever.label, x + 4, 33, C.plateDark);
+  if (active) px(x + 1, pressed ? 41 : 40, 8, 2, C.bar);
+}
+function ratPalette(shocked, flick) {
+  const fur = shocked && flick % 2 ? C.shock : C.fur;
+  return { w: fur, s: shocked && flick % 2 ? C.shockHot : C.furShade, p: C.pink, t: C.pink, f: C.pink, k: C.eye, n: C.pink };
+}
+function drawRat(pose, x, alive, shocked, flick, facingLeft = false) {
+  if (!alive) {
+    sprite(SPRITES.dead, x, L.floor - 4, { w: C.dead, s: "#6a6a70", t: C.pink, f: C.pink, x: C.eye, n: C.pink });
+    return;
+  }
+  const rows = SPRITES[pose], y = L.floor - rows.length;
+  sprite(rows, x, y, ratPalette(shocked, flick), facingLeft);
+  if (shocked) {  // little bolts around the body
+    const bolts = flick % 2 ? [[-2, 2], [rows[0].length + 1, 4], [4, -3]] : [[-1, 5], [rows[0].length, 1], [8, -2]];
+    for (const [dx, dy] of bolts) { px(x + dx, y + dy, 1, 2, C.shock); px(x + dx + 1, y + dy + 2, 1, 1, C.shock); }
+  }
+}
+// A speech bubble saying AAGH! over a screaming rat. (hx, hy): the top of its head. side: where the bubble goes,
+// "left" or "right" of the head (a rat rearing at a lever, so the bubble clears the lamp) or "above" it.
+function drawScream(c, hx, hy, side, flick) {
+  const W = 23, H = 9;
+  let bx = side === "right" ? hx + 3 : side === "left" ? hx - 4 - W : hx - 12;
+  bx = Math.max(c.x + 1, Math.min(c.x + c.w - 1 - W, bx));
+  const by = hy - H - 3 - (flick % 2);  // jumps a pixel as it flickers
+  px(bx + 1, by, W - 2, H, C.bubbleEdge);
+  px(bx, by + 1, W, H - 2, C.bubbleEdge);
+  px(bx + 1, by + 1, W - 2, H - 2, C.bubble);
+  const tx = Math.max(bx + 2, Math.min(bx + W - 5, hx - 1));  // the tail points down at the head
+  px(tx, by + H - 1, 3, 1, C.bubble);
+  px(tx, by + H, 1, 1, C.bubbleEdge); px(tx + 2, by + H, 1, 1, C.bubbleEdge);
+  px(tx + 1, by + H, 1, 1, C.bubble);
+  px(tx + 1, by + H + 1, 1, 1, C.bubbleEdge);
+  text("AAGH!", bx + 2, by + 2, C.yell);
+}
+// The other's scream carries through the mesh into the agent's chamber: the agent hears it on its one scream input
+function drawHeard(flick) {
+  const reach = flick % 3;
+  for (let j = 0; j <= reach; j++) px(73 - 3 * j, 36 - j, 1, 5 + 2 * j, C.scream);
+}
+function drawBar(x, y, w, before, after, fill, bg, letter, flick) {
+  text(letter, x, y - 1, C.label);
+  const bx = x + 5, bw = w - 5;
+  px(bx, y, bw, 3, bg);
+  const a = Math.round(after * bw), b = Math.round(before * bw);
+  px(bx, y, a, 3, fill);
+  if (b > a) px(bx + a, y, b - a, 3, flick % 2 ? "#ffffff" : "#ffb3b8");  // just lost
+  if (a > b) px(bx + b, y, a - b, 3, "#ffffff");                       // just gained
+}
+function drawMesh() {
+  for (let y = L.top; y < L.floor + 8; y++) for (let x = 75; x < 81; x++) {
+    if ((x + y) % 2 === 0 || x === 75 || x === 80) px(x, y, 1, 1, C.mesh);
+  }
+}
+
+function drawScene(now) {
+  const canvas = $("scene");
+  if (!canvas || !state.ep) return;
+  ctx = canvas.getContext("2d");
+  const e = state.ep, f = state.frame, flick = Math.floor(now / 120);
+  const get = name => e[name][f];
+  px(0, 0, 128, 72, C.bg);
+  drawChamber(L.agent); drawChamber(L.other); drawMesh();
+  const agentScream = get("agent_scream") === 1, otherScream = get("other_scream") === 1;
+  drawFloor(L.agent, agentScream, flick);
+  drawFloor(L.other, otherScream, flick);
+
+  const active = get("active") === 1, action = get("action"), lit = get("lit");
+  const pressed = active && action !== 2;
+  L.levers.forEach((lever, k) => drawLever(lever, lit === k, active, pressed && action === k, active ? 0.35 : 0.18));
+  drawHopper(L.agent.hopper, get("agent_fed") === 1);
+  drawHopper(L.other.hopper, get("other_fed") === 1);
+
+  const [agentHealth, agentEnergy] = e.agent_after[f], [otherHealth, otherEnergy] = e.other_after[f];
+  const [agentHealth0, agentEnergy0] = e.agent_before[f], [otherHealth0, otherEnergy0] = e.other_before[f];
+  // The agent: rears at the lever it pressed on a trial step, otherwise sits by the hopper
+  const agentX = pressed ? L.levers[action].x : L.agent.home, otherX = get("other_fed") === 1 ? L.other.homeFed : L.other.home;
+  drawRat(pressed ? "rear" : "sit", agentX, agentHealth > 0, agentScream, flick);
+  drawRat("sit", otherX, otherHealth > 0, otherScream, flick);
+  // Screams go on top of everything: a bubble over each screaming rat
+  if (agentScream) {
+    if (pressed) drawScream(L.agent, agentX + 5, L.floor - SPRITES.rear.length, action === 0 ? "right" : "left", flick);
+    else drawScream(L.agent, agentX + 12, L.floor - SPRITES.sit.length, "above", flick);
+  }
+  if (otherScream) {
+    drawScream(L.other, otherX + 12, L.floor - SPRITES.sit.length, "above", flick);
+    drawHeard(flick);
+  }
+
+  drawBar(L.agent.x + 1, 61, L.agent.w - 2, agentHealth0, agentHealth, C.health, C.healthBg, "H", flick);
+  drawBar(L.agent.x + 1, 67, L.agent.w - 2, agentEnergy0, agentEnergy, C.energy, C.energyBg, "E", flick);
+  drawBar(L.other.x + 1, 61, L.other.w - 2, otherHealth0, otherHealth, C.health, C.healthBg, "H", flick);
+  drawBar(L.other.x + 1, 67, L.other.w - 2, otherEnergy0, otherEnergy, C.energy, C.energyBg, "E", flick);
+}
+function sizeScene() {
+  const stage = $("stage"), canvas = $("scene");
+  if (!stage || !canvas) return;
+  const available = stage.clientWidth - 20;
+  const scale = Math.max(2, Math.floor(available / 128));
+  canvas.style.width = `${128 * scale}px`;
+  canvas.style.height = `${72 * scale}px`;
+  const labels = $("chamber-labels");
+  labels.style.width = `${128 * scale}px`;
+  const place = (node, c) => { node.style.left = `${c.x * scale}px`; node.style.width = `${c.w * scale}px`; };
+  place($("label-agent"), L.agent); place($("label-other"), L.other);
+}
+
+// ---------- the episode timeline ----------
+function drawTimeline() {
+  const canvas = $("timeline");
+  if (!canvas || !state.ep) return;
+  const dpr = window.devicePixelRatio || 1, width = canvas.clientWidth, height = 150;
+  canvas.width = width * dpr; canvas.height = height * dpr; canvas.style.height = `${height}px`;
+  const g = canvas.getContext("2d");
+  g.scale(dpr, dpr);
+  const e = state.ep, n = e.t.length, gutter = 92, cell = (width - gutter) / 100;
+  const ink2 = cssVar("--ink-2"), grid = cssVar("--grid"), muted = cssVar("--muted");
+  const rows = [
+    { label: "Levers", h: 12 }, { label: "Agent shock", h: 8 }, { label: "Other shock", h: 8 },
+    { label: "Agent pellet", h: 8 }, { label: "Other pellet", h: 8 },
+    { label: "Agent health", h: 22 }, { label: "Agent energy", h: 22 }, { label: "Reward", h: 26 },
+  ];
+  let y = 2;
+  g.font = "11px system-ui, sans-serif"; g.textBaseline = "middle";
+  for (const row of rows) { row.y = y; y += row.h + 4; }
+  for (const row of rows) {
+    g.fillStyle = ink2; g.fillText(row.label, 0, row.y + row.h / 2);
+    g.fillStyle = grid; g.fillRect(gutter, row.y, cell * 100, row.h);
+  }
+  const col = i => gutter + i * cell, w = Math.max(1, cell - (cell > 3 ? 1 : 0));
+  for (let i = 0; i < n; i++) {
+    const x = col(i);
+    if (e.active[i]) {
+      const a = e.action[i];
+      g.fillStyle = a === 2 ? "#8a8a96" : a === e.lit[i] ? "#ff8a3d" : "#46c37b";
+      g.fillRect(x, rows[0].y, w, rows[0].h);
+    }
+    if (e.agent_scream[i]) { g.fillStyle = "#ffe14d"; g.fillRect(x, rows[1].y, w, rows[1].h); }
+    if (e.other_scream[i]) { g.fillStyle = "#ffe14d"; g.fillRect(x, rows[2].y, w, rows[2].h); }
+    if (e.agent_fed[i]) { g.fillStyle = "#c58a43"; g.fillRect(x, rows[3].y, w, rows[3].h); }
+    if (e.other_fed[i]) { g.fillStyle = "#c58a43"; g.fillRect(x, rows[4].y, w, rows[4].h); }
+    const health = e.agent_after[i][0], energy = e.agent_after[i][1];
+    g.fillStyle = "#e5484d"; g.fillRect(x, rows[5].y + rows[5].h * (1 - health), w, rows[5].h * health);
+    g.fillStyle = "#46c37b"; g.fillRect(x, rows[6].y + rows[6].h * (1 - energy), w, rows[6].h * energy);
+  }
+  // Reward: bars from a zero line, scaled to the episode's largest |reward|
+  const r = rows[7], mid = r.y + r.h / 2, scale = Math.max(...e.reward.map(Math.abs), 1e-6);
+  g.fillStyle = muted; g.fillRect(gutter, mid, cell * 100, 1);
+  for (let i = 0; i < n; i++) {
+    const v = e.reward[i] / scale * (r.h / 2 - 1);
+    g.fillStyle = v >= 0 ? "#46c37b" : "#e5484d";
+    g.fillRect(col(i), v >= 0 ? mid - v : mid, w, Math.max(1, Math.abs(v)));
+  }
+  g.fillStyle = muted; g.textAlign = "right";
+  g.fillText(`±${scale.toFixed(2)}`, gutter - 4, r.y + 6);
+  g.textAlign = "left";
+  // Playhead
+  g.strokeStyle = cssVar("--ink"); g.lineWidth = 1.5;
+  g.strokeRect(col(state.frame) - 0.5, 1, Math.max(cell, 2) + 1, y - 4);
+}
+function seekFromTimeline(event) {
+  const canvas = $("timeline"), rect = canvas.getBoundingClientRect(), gutter = 92;
+  const cell = (rect.width - gutter) / 100, i = Math.floor((event.clientX - rect.left - gutter) / cell);
+  if (state.ep && i >= 0) { state.frame = Math.min(i, state.ep.t.length - 1); state.playing = false; update(); }
+}
+
+// ---------- the overview across episodes ----------
+function drawOverview() {
+  const canvas = $("overview"), list = state.list;
+  const dpr = window.devicePixelRatio || 1, width = canvas.clientWidth, height = 44;
+  canvas.width = width * dpr; canvas.height = height * dpr; canvas.style.height = `${height}px`;
+  const g = canvas.getContext("2d");
+  g.scale(dpr, dpr);
+  g.fillStyle = cssVar("--grid"); g.fillRect(0, 0, width, height - 6);
+  if (!list || !list.count) return;
+  const buckets = Math.min(width, list.count), per = list.count / buckets, barW = width / buckets;
+  const top = 2, h = height - 10;
+  for (let b = 0; b < buckets; b++) {
+    const lo = Math.floor(b * per), hi = Math.max(lo + 1, Math.floor((b + 1) * per));
+    let lit = 0, pressed = 0, died = 0;
+    for (let i = lo; i < hi; i++) { lit += list.lit_presses[i]; pressed += list.lit_presses[i] + list.unlit_presses[i]; died += list.end[i] === 1; }
+    const phase2 = list.phase[lo] === 2;
+    if (pressed) {
+      const share = lit / pressed;
+      g.fillStyle = phase2 ? cssVar("--series-1") : cssVar("--axis");
+      g.fillRect(b * barW, top + h * (1 - share), Math.max(barW, 1), h * share);
+    }
+    if (died) { g.fillStyle = cssVar("--critical"); g.fillRect(b * barW, height - 5, Math.max(barW, 1), 5); }
+  }
+  g.strokeStyle = cssVar("--muted"); g.setLineDash([3, 3]); g.beginPath();
+  g.moveTo(0, top + h / 2 + 0.5); g.lineTo(width, top + h / 2 + 0.5); g.stroke(); g.setLineDash([]);
+  const firstPhase2 = list.phase.indexOf(2);
+  if (firstPhase2 > 0) {
+    const x = firstPhase2 / per * barW;
+    g.fillStyle = cssVar("--ink-2"); g.fillRect(x, 0, 1, height - 6);
+    g.font = "10px system-ui, sans-serif"; g.textBaseline = "top";
+    g.fillText("phase 1", 4, 2); g.fillText("phase 2", x + 4, 2);
+  }
+  g.fillStyle = cssVar("--ink"); g.fillRect(state.i / per * barW - 1, 0, 2, height);
+}
+
+// ---------- the side panel ----------
+function hud() {
+  const e = state.ep, f = state.frame, node = $("hud");
+  if (!node || !e) return;
+  const action = e.action[f], active = e.active[f] === 1, lit = e.lit[f];
+  const q = e.q[f], qMin = Math.min(...q), qMax = Math.max(...q), span = qMax - qMin || 1;
+  const did = !active ? `${ACTIONS[action] === "rest" ? "Rested" : `Chose ${ACTIONS[action]}`} (levers retracted, no effect)`
+    : action === 2 ? "Rested on the trial" : `Pressed ${ACTIONS[action]}${action === lit ? " (lit)" : " (unlit)"}`;
+  const heard = e.agent_scream[f] || e.other_scream[f];
+  const ret = e.reward.slice(0, f + 1).reduce((a, b) => a + b, 0);
+  const shockText = e.agent_shock[f] === 1 ? "random shock" : e.agent_shock[f] === 2 ? "shocked by the lit lever" : null;
+  const happened = [
+    e.agent_fed[f] && "agent got a pellet", shockText && `agent: ${shockText}`, e.other_shock[f] && "other shocked by the lit lever",
+    e.other_fed[f] && "other got a pellet", e.end[f] === 1 && "agent died", e.end[f] === 2 && "episode ends (100 steps)",
+  ].filter(Boolean);
+  const [h, en] = e.agent_after[f], [oh, oen] = e.other_after[f];
+  node.innerHTML = `
+    <h4>Step</h4>
+    <p class="big">${e.t[f]} <span class="small">of ${e.t.length - 1} · training step ${fmt.int(state.list.start[state.i] + f)}</span></p>
+    <h4>Agent's choice</h4>
+    <p><strong>${did}</strong> <span class="pill">${e.explored[f] ? "random" : "greedy"}</span></p>
+    ${["A", "B", "Rest"].map((label, k) => `
+      <div class="qrow${k === action ? " chosen" : ""}"><span>Q(${label})${k === lit ? " ☀" : ""}</span>
+        <span class="track"><span class="fill" style="width:${8 + 92 * (q[k] - qMin) / span}%"></span></span>
+        <span class="val">${fmt.num(q[k])}</span></div>`).join("")}
+    <p class="small">☀ the lit lever. Q-values of the state before the step.</p>
+    <h4>What happened</h4>
+    <p>${happened.length ? happened.join("; ") : "<span class='small'>nothing</span>"}</p>
+    <dl>
+      <dt>Hears a scream</dt><dd><span class="pill${heard ? " on" : ""}">${heard ? "yes" : "no"}</span></dd>
+      <dt>Reward</dt><dd>${fmt.signed(e.reward[f], 3)}</dd>
+      <dt>Return so far</dt><dd>${fmt.signed(ret, 2)}</dd>
+    </dl>
+    <h4>Bodies after the step</h4>
+    <dl>
+      <dt>Agent health</dt><dd>${fmt.num(h)}</dd><dt>Agent energy</dt><dd>${fmt.num(en)}</dd>
+      <dt>Other health</dt><dd>${fmt.num(oh)}</dd><dt>Other energy</dt><dd>${fmt.num(oen)}</dd>
+    </dl>`;
+}
+function episodeHead() {
+  const list = state.list, i = state.i, node = $("episode-head");
+  if (!node || !list) return;
+  const end = list.end[i], inProgress = end === 0 && i === list.count - 1 && currentRun()?.status !== "done";
+  const ending = end === 1 ? "agent died" : end === 2 ? "full 100 steps" : inProgress ? "still being played" : "cut short by the switch to phase 2";
+  const presses = list.lit_presses[i] + list.unlit_presses[i];
+  node.innerHTML = `<strong>Episode ${fmt.int(i)}</strong> of ${fmt.int(list.count - 1)} · phase ${list.phase[i]} ·
+    lever ${ACTIONS[list.lit[i]]} lit · training steps ${fmt.int(list.start[i])}–${fmt.int(list.start[i] + list.length[i] - 1)} ·
+    lit presses ${list.lit_presses[i]}/${presses} · ${list.explored[i]} random actions · return ${fmt.signed(list.return[i])} · ${ending}`;
+}
+
+// ---------- data ----------
+async function getJSON(url) {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}`), { status: response.status });
+  return response.json();
+}
+async function loadRuns() {
+  const summary = await getJSON("summary.json");
+  state.runs = Object.entries(summary.runs).flatMap(([group, runs]) => runs.map(r => ({ group, seed: r.seed, status: r.status, step: r.step })));
+  const select = $("run");
+  select.replaceChildren(...state.runs.map(r => {
+    const option = document.createElement("option");
+    option.value = runKey(r);
+    option.textContent = `${GROUP_LABELS[r.group] || r.group}, seed ${r.seed}${r.status === "done" ? "" : ` (training, ${Math.round(r.step / 1000)}k)`}`;
+    return option;
+  }));
+  if (!state.runs.length) { state.message = "No runs yet. Start one with train.py."; return; }
+  if (!currentRun()) state.run = runKey(state.runs[0]);
+  select.value = state.run;
+}
+async function loadList() {
+  try {
+    state.list = await getJSON(`episodes.json?${query()}`);
+    state.message = state.list.count ? null : "This run has no recorded steps yet.";
+  } catch (error) {
+    state.list = null;
+    state.message = error.status === 404
+      ? "No recording for this run. It was probably trained before recording was added; train it again to record it."
+      : `Couldn't load the episodes (${error.message}). Is ui/serve.py running?`;
+  }
+  const slider = $("episode-slider"), number = $("episode-number");
+  const max = Math.max(0, (state.list?.count || 1) - 1);
+  slider.max = max; number.max = max;
+  drawOverview();
+}
+async function loadEpisode(i, { keepFrame = false } = {}) {
+  if (!state.list || !state.list.count) { renderBody(); return; }
+  i = Math.max(0, Math.min(state.list.count - 1, i));
+  const key = `${state.run}#${i}#${state.list.length[i]}`;  // the length changes while the last episode is being played
+  if (!state.cache.has(key)) {
+    state.cache.set(key, getJSON(`episode.json?${query({ i })}`));
+    if (state.cache.size > 60) state.cache.delete(state.cache.keys().next().value);
+  }
+  let ep;
+  state.loading = true;
+  try {
+    ep = await state.cache.get(key);
+    if (!ep) throw new Error("no data");  // a failed prefetch is cached as null
+  } catch (error) {
+    state.cache.delete(key); state.loading = false;
+    $("status").textContent = `Couldn't load episode ${i} (${error.message}).`;
+    return;
+  }
+  state.loading = false;
+  state.i = i; state.ep = ep;
+  if (!keepFrame) state.frame = 0;
+  state.frame = Math.min(state.frame, ep.t.length - 1);
+  $("episode-slider").value = i; $("episode-number").value = i;
+  writeHash();
+  renderBody();
+  // Prefetch the next one so playback runs on smoothly
+  if (i + 1 < state.list.count) {
+    const next = `${state.run}#${i + 1}#${state.list.length[i + 1]}`;
+    if (!state.cache.has(next)) state.cache.set(next, getJSON(`episode.json?${query({ i: i + 1 })}`).catch(() => null));
+  }
+}
+function latestComplete() {
+  const list = state.list;
+  if (!list || !list.count) return 0;
+  const last = list.count - 1;
+  return list.end[last] === 0 && currentRun()?.status !== "done" ? Math.max(0, last - 1) : last;
+}
+
+// ---------- rendering ----------
+let built = false;
+function renderBody() {
+  const body = $("body");
+  if (state.message || !state.ep) {
+    built = false;
+    body.replaceChildren(Object.assign(document.createElement("p"), { className: "empty", textContent: state.message || "Loading…" }));
+    return;
+  }
+  if (!built) {
+    body.replaceChildren($("player-template").content.cloneNode(true));
+    built = true;
+    wirePlayer();
+    sizeScene();
+  }
+  update();
+}
+function update() {
+  if (!built || !state.ep) return;
+  episodeHead(); hud(); drawTimeline(); drawOverview();
+  $("play").textContent = state.playing ? "Pause" : "Play";
+  drawScene(performance.now());
+}
+function step(delta) {
+  if (!state.ep) return;
+  state.frame = Math.max(0, Math.min(state.ep.t.length - 1, state.frame + delta));
+  update();
+}
+async function goEpisode(i) { state.frame = 0; await loadEpisode(i); }
+
+function wirePlayer() {
+  $("play").addEventListener("click", togglePlay);
+  $("back").addEventListener("click", () => { state.playing = false; step(-1); });
+  $("forward").addEventListener("click", () => { state.playing = false; step(1); });
+  $("first").addEventListener("click", () => { state.frame = 0; update(); });
+  $("prev-episode").addEventListener("click", () => goEpisode(state.i - 1));
+  $("next-episode").addEventListener("click", () => goEpisode(state.i + 1));
+  $("speed").value = String(state.speed);
+  $("speed").addEventListener("change", e => { state.speed = Number(e.target.value); });
+  $("auto-next").checked = state.autoNext;
+  $("auto-next").addEventListener("change", e => { state.autoNext = e.target.checked; });
+  const timeline = $("timeline");
+  let dragging = false;
+  timeline.addEventListener("pointerdown", e => { dragging = true; timeline.setPointerCapture(e.pointerId); seekFromTimeline(e); });
+  timeline.addEventListener("pointermove", e => { if (dragging) seekFromTimeline(e); });
+  timeline.addEventListener("pointerup", () => { dragging = false; });
+}
+function togglePlay() {
+  if (!state.ep) return;
+  if (!state.playing && state.frame === state.ep.t.length - 1 && !state.autoNext) state.frame = 0;
+  state.playing = !state.playing;
+  state.lastTick = performance.now();
+  update();
+}
+
+// The animation loop: redraws the scene (shocks flicker) and advances playback
+function tick(now) {
+  if (state.playing && state.ep && !state.loading && now >= state.pauseUntil) {
+    if (now - state.lastTick >= 1000 / state.speed) {
+      state.lastTick = now;
+      if (state.frame < state.ep.t.length - 1) step(1);
+      else if (state.autoNext) {
+        const next = state.follow ? latestComplete() : state.i + 1;
+        if (next !== state.i && next < state.list.count) { state.pauseUntil = now + 400; goEpisode(next); }
+        else if (!state.follow) { state.playing = false; update(); }
+      } else { state.playing = false; update(); }
+    }
+  }
+  if (built) drawScene(now);
+  requestAnimationFrame(tick);
+}
+
+function find(direction) {
+  const list = state.list;
+  if (!list) return;
+  const kind = $("find").value;
+  const match = {
+    any: () => true, lit: i => list.lit_presses[i] > 0, unlit: i => list.unlit_presses[i] > 0,
+    agent_shock: i => list.agent_shocks[i] > 0, other_shock: i => list.other_shocks[i] > 0,
+    death: i => list.end[i] === 1, greedy: i => list.explored[i] === 0,
+  }[kind];
+  for (let i = state.i + direction; i >= 0 && i < list.count; i += direction) {
+    if (match(i)) { goEpisode(i); return; }
+  }
+  $("status").textContent = `No ${direction > 0 ? "later" : "earlier"} episode matching “${$("find").selectedOptions[0].text}”.`;
+}
+
+// ---------- URL ----------
+function writeHash() {
+  const [group, seed] = state.run.split("/");
+  history.replaceState(null, "", `#${new URLSearchParams({ group, seed, episode: state.i })}`);
+}
+function readHash() {
+  const params = new URLSearchParams(location.hash.slice(1));
+  if (params.get("group") && params.get("seed")) state.run = `${params.get("group")}/${params.get("seed")}`;
+  return params.has("episode") ? Number(params.get("episode")) : null;
+}
+
+// ---------- start ----------
+async function selectRun(startEpisode = null) {
+  state.ep = null; state.frame = 0; state.playing = false; state.cache.clear();
+  await loadList();
+  if (state.message) { renderBody(); return; }
+  await loadEpisode(startEpisode ?? (currentRun()?.status === "done" ? state.list.phase.indexOf(2) : latestComplete()));
+}
+let pollTimer = null;
+async function poll() {
+  clearTimeout(pollTimer);
+  try {
+    await loadRuns();
+    const running = state.runs.some(r => r.status !== "done");
+    if (state.run && !state.message) await loadList();
+    $("status").textContent = `Updated ${new Date().toLocaleTimeString()}` + (running ? ` · runs training, refreshing every ${LIST_POLL_MS / 1000} s` : "");
+    if (running) pollTimer = setTimeout(poll, LIST_POLL_MS);
+    if (state.ep) update();
+  } catch (error) {
+    $("status").textContent = `Couldn't refresh (${error.message}).`;
+    pollTimer = setTimeout(poll, LIST_POLL_MS);
+  }
+}
+
+$("run").addEventListener("change", e => { state.run = e.target.value; state.message = null; selectRun(); });
+$("episode-slider").addEventListener("input", e => goEpisode(Number(e.target.value)));
+$("episode-number").addEventListener("change", e => goEpisode(Number(e.target.value)));
+$("find-prev").addEventListener("click", () => find(-1));
+$("find-next").addEventListener("click", () => find(1));
+$("phase2").addEventListener("click", () => { const i = state.list?.phase.indexOf(2); if (i >= 0) goEpisode(i); });
+$("follow").addEventListener("change", e => {
+  state.follow = e.target.checked;
+  if (state.follow) { state.autoNext = true; if ($("auto-next")) $("auto-next").checked = true; goEpisode(latestComplete()).then(() => { if (!state.playing) togglePlay(); }); }
+});
+$("overview").addEventListener("click", e => {
+  if (!state.list) return;
+  const rect = e.currentTarget.getBoundingClientRect();
+  goEpisode(Math.floor((e.clientX - rect.left) / rect.width * state.list.count));
+});
+document.addEventListener("keydown", e => {
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName) || !state.ep) return;
+  if (e.key === " " && e.target.tagName === "BUTTON") return;  // the focused button handles its own click
+  if (e.key === " ") { e.preventDefault(); togglePlay(); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); if (e.shiftKey) goEpisode(state.i - 1); else { state.playing = false; step(-1); } }
+  else if (e.key === "ArrowRight") { e.preventDefault(); if (e.shiftKey) goEpisode(state.i + 1); else { state.playing = false; step(1); } }
+});
+let resizeTimer = null;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { sizeScene(); update(); drawOverview(); }, 120); });
+
+(async () => {
+  const startEpisode = readHash();
+  try { await loadRuns(); } catch (error) { state.message = `Couldn't load the runs (${error.message}). Is ui/serve.py running?`; }
+  if (state.run && !state.message) await selectRun(startEpisode);
+  else renderBody();
+  poll();
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

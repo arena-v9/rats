@@ -77,7 +77,142 @@ also shocked a neighbour, more so after their own pain experience.
 
 ### Results (version 3)
 
-*Not run yet.*
+**Pilot: passed, but only on the final checkpoint.** With the lit lever shocking the agent itself, the final networks
+pressed it on 17.2%, 0.0% and 0.0% of presses; phase-1 deaths after ε reached 0.02 were 1.8%, 3.1% and 2.4% of
+episodes. Avoidance was learned within about 20k phase-2 steps and then broke down for stretches: seed 1 was at 32.8%
+at 180k and rose again to 17.2% at 300k; seed 2 was at 25.0% at 180k; seed 3 was at 25–38% from 160k to 280k. The pass
+depends on where the oscillation happened to be at 300k. A run took about 20 minutes on CPU, three at once. (Run twice:
+the second run, with the step recording and the diagnostics below, reproduced every checkpoint exactly.)
+
+**Why avoidance breaks down** (from the step recording and the buffer and probe diagnostics):
+
+- Not exploration: exploratory lit presses stayed at 0–5 per 5k steps and did not rise before a breakdown; the presses
+  during one were greedy (seed 1, 175–180k: 39 of 42).
+- Not a lack of shocked examples: shocked lit presses in the replay buffer rose through phase 2 (about 100 → 300). Nor
+  the safe lit presses left from phase 1: avoidance was best while they still filled the buffer.
+- Each breakdown hit one lit condition only: the agent pressed one lever whichever lamp was lit (a lever bias). Seeds 1
+  and 2 at 180k and seed 3 from 160k to 280k pressed B when B was lit; seed 1 at 280–300k pressed A when A was lit.
+  Seed 2 at 180k pressed lit B on exactly the trials at steps 12 and 62: hence its 25.0%.
+- The Q-gap that decides the choice was small (0.1–0.4) next to swings of ±5 in all three Q-values together over
+  20–30k steps, and the values of A-lit and B-lit states differed by up to 7 although the task is symmetric. The step
+  of the press itself paid +2.9 on average (the pellet outweighs the first 0.2 of shock); the cost comes in the next
+  two steps.
+
+### Version 3.1: one input per lamp
+
+**Change from version 3.** The lit lever is two inputs, `lit_A` and `lit_B` (exactly one is 1), instead of one
+`lit_lever` input (0 = A, 1 = B). Observation: 6 inputs; network 6→64→64→3. Nothing else changes.
+
+**Why.** With a 0/1 input, A-lit states are the network's baseline (the input contributes nothing) and B-lit states
+are the baseline plus a correction that only B-lit samples train, so the two conditions learn asymmetrically. One input
+per lamp makes them symmetric. Both encodings can represent the same functions; only how training distributes its
+updates changes. It is a test of whether the encoding contributes to the lever bias: the late seed-1 breakdown on lever
+A means it is not the whole story, and the small Q-gap next to the drift may matter more.
+
+**Plan.** Pilot only, seeds 1–3, compared with the version-3 pilot: do breakdowns still happen, and on which lever?
+
+### Predictions (version 3.1)
+
+*To be filled in by the experimenter before the runs.*
+
+- Breakdowns (lit-lever share above 20% at any phase-2 checkpoint after 120k):
+- Lever of the breakdowns (A, B or both):
+- Pilot pass (final lit-lever share below 20% on all seeds):
+
+### Results (version 3.1)
+
+**Pilot: passed, but only on the final checkpoint again.** Final lit-lever shares 0.0%, 0.0% and 5.7%; phase-1 deaths
+1.8%, 3.1% and 2.4%. Breakdowns (above 20% after 120k) on 5 of 30 checkpoints, against 8 of 30 in version 3: seed 2 at
+280k (43%), seed 3 at 160k, 180k, 240k and 280k (67%, both lamps). They now fall on either lever, so the encoding
+asymmetry is gone, but the breakdowns are not. Runs kept in `runs/v3.1_pilot/`.
+
+**Why: the loss was biased.** Phase 2 of the pilot is deterministic, so the true Q-values can be computed exactly by
+simulation; phase 1's by Monte Carlo. Compared with them, the networks were wrong in three ways:
+
+- Every value about 7 too low at the end of phase 1 (−6.5 to −7.4 on all three seeds), wearing off only over 40–60k
+  phase-2 steps.
+- The lever gap 5–20 times too small during the main window: learned −0.02 to −0.15, true −0.6 to −2.3 (at full
+  health the true gap is −0.56).
+- Death barely felt: at health 0.5 a shock kills and the true gap is −15 to −19; seed 3 reached low health and kept
+  pressing the lit lever, with a learned gap of −0.8 where the true one averaged −7.3.
+
+Phase 1 alone, seed 1, one change at a time: without the death store the error was unchanged (−7.37 vs −7.36); with
+mean squared error instead of the Huber loss it was +0.23. The Huber loss (threshold 1) acts like absolute error when
+TD errors exceed 1, which here they mostly do (rewards are scaled ×10), so it fits the median of the targets instead of
+their mean. The rewards are mostly small losses with occasional large gains, so the median lies below the mean; large
+rare errors (the shock's cost, death) count no more than an error of 1. Versions 1–3.1 all used this loss.
+
+### Version 3.2: mean squared error instead of the Huber loss
+
+**Change from version 3.1.** The DQN loss is mean squared error instead of the Huber loss (`smooth_l1_loss`). The
+gradient-norm clip (10) stays, guarding against spikes from death transitions. Nothing else changes.
+
+**Why.** See above: the Huber loss biased every value and shrank the differences that decide the choice.
+
+**Plan.** Pilot, seeds 1–5 (it costs the same time as three on this machine, and three cannot tell "sometimes breaks
+down" from "reliable"), compared with versions 3 and 3.1 on breakdowns and against the exact values.
+
+### Predictions (version 3.2)
+
+*To be filled in by the experimenter before the runs.*
+
+- Breakdowns (lit-lever share above 20% at any phase-2 checkpoint after 120k):
+- Learned values vs exact values at the end of phase 1:
+- Pilot pass (final lit-lever share below 20% on all seeds):
+
+### Results (version 3.2)
+
+**Stopped at 260–265k of 300k (enough to read): better, still not reliable.** Breakdowns (above 20%) on 5 of 40
+checkpoints from 120k to 260k, against 3 of 24 in version 3.1, and smaller (at most 23%, against 39%). But many
+checkpoints sat at 10–20%, and seed 4 broke down at 120–140k, in the main measure's window. The loss fix alone is not
+enough. Runs kept in `runs/v3.2_pilot/`.
+
+### Version 3.3: γ 0.95, a 20k replay buffer, no store of deaths
+
+**Changes from version 3.2.** Three at once (to get a reliable pilot; version 3.2 isolates the loss):
+
+- γ 0.99 → 0.95. A shock's health comes back as reward while it regenerates, so a shock costs the agent only through
+  discounting, and at γ 0.99 there is little of it over the ~60 steps of recovery. True disadvantage of the lit lever
+  (exact, energy 0.5), at health 1.0 / 0.8 / 0.6: γ 0.99: −0.56 / −1.30 / −2.33; γ 0.95: −1.70 / −3.50 / −5.61.
+  Horizon about 20 steps instead of 100.
+- Replay buffer 100k → 20k transitions. With 100k, phase-1 transitions (in which the lit lever is safe, in states
+  that look the same) stayed in the buffer until step 200k; with 20k they are gone by step 120k, when the main
+  measure starts. 20k is also the length of the random warm-up.
+- No store of deaths (it gave deaths 5% of each batch, about 250 times their frequency). Sampling death that often
+  overweights it wherever it depends on chance (phase 1: random shocks at low health) and biases values down. Under
+  the Huber loss its effect was capped; under mean squared error it would not be.
+
+**Risk.** With a small buffer and no store, deaths can leave the buffer entirely and be forgotten. Check: phase-2
+deaths in training and evaluation, and the learned gap at low health against the exact one.
+
+**Plan.** Pilot, seeds 1–5, on the new quick schedule (40k + 80k steps: warm-up 10k, ε at its floor by 25k,
+checkpoints every 5k, log points every 1k), to iterate faster. The experiment's measures stay defined on the full
+schedule; `analyze.py` leaves quick runs out of experiment 1. Training now also logs, at every log point: gradient
+norms and how often clipping acts, TD errors by kind of transition (lit press, unlit press, rest on a trial, scream,
+death, other), how far the online network drifts from the target network, weight norms, the buffer's contents
+(deaths, phase-1 share), and, in phase 2, the probe grid against the exact Q-values (`exact.py`); each checkpoint
+compares the learned Q-gap on visited trial states with the exact one.
+
+### Predictions (version 3.3)
+
+*To be filled in by the experimenter before the runs.*
+
+- Breakdowns (lit-lever share above 20% at any phase-2 checkpoint after 120k):
+- Deaths in phase 2 (forgetting):
+- Pilot pass (final lit-lever share below 20% on all seeds):
+
+### Results (version 3.3)
+
+**Pilot: passed, and reliably this time** (quick schedule, 5 seeds). No breakdowns: 0 of 80 phase-2 checkpoints above
+20% (highest 7%, at 55k on seed 4); final lit-lever share 0.0% on every seed. The learned Q-gap on visited trial states
+came within 0.3 of the exact gap (−1.70) by 60–70k and stayed there (final −1.50 to −1.74), with the right sign on
+100% of trial states. Phase-1 deaths after ε reached its floor: 2.0%, 0.7%, 3.9%, 2.6%, 2.0% of episodes. Gradient
+clipping never acted (0% of updates). About 8 minutes per run, five at once. Runs kept in `runs/v3.3_pilot/`.
+
+**One weakness: death is forgotten.** Without the store of deaths, deaths left the 20k buffer by about 70k, after
+which the TD errors on death transitions could no longer be measured and the probe grid showed the gap at low health
+(where a shock kills) about 5 smaller than the exact one, though with the right sign. Harmless here, since the agent no
+longer reaches low health in phase 2; buffer size governs it, so the buffer ablation measures it too.
 
 ## Earlier versions of experiment 1
 

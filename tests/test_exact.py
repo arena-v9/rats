@@ -1,0 +1,28 @@
+import pytest
+
+from exact import exact_q, exact_trial_q
+from train import SCHEDULES, epsilon
+
+
+def test_in_the_pilot_the_lit_lever_is_worse_and_more_so_at_low_health():
+    gaps = [exact_q(h, 0.5, "lit", True) - exact_q(h, 0.5, "unlit", True) for h in (1.0, 0.8, 0.6)]
+    assert gaps[0] == pytest.approx(-1.70, abs=0.01)  # at gamma 0.95 (independent simulation gave -1.70)
+    assert gaps[0] > gaps[1] > gaps[2] < 0
+
+
+def test_a_shock_at_low_health_kills():
+    # health 0.5: three shock steps of 0.2 take it to 0 before regeneration can help
+    assert exact_q(0.5, 0.5, "lit", True) < exact_q(0.5, 0.5, "unlit", True) - 10
+
+
+def test_when_the_lit_lever_shocks_the_other_it_costs_the_agent_nothing():
+    lit, unlit, rest = exact_trial_q(1.0, 0.5, "other")
+    assert lit == unlit and rest < unlit  # resting forgoes the pellet
+
+
+@pytest.mark.parametrize("name", list(SCHEDULES))
+def test_epsilon_falls_to_its_floor_by_the_schedule_end_step(name):
+    schedule = SCHEDULES[name]
+    assert epsilon(0, schedule) == 1.0
+    assert epsilon(schedule["epsilon_end_step"], schedule) == pytest.approx(0.02)
+    assert schedule["warmup_steps"] < schedule["epsilon_end_step"] < schedule["phase1_steps"]

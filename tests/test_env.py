@@ -184,6 +184,15 @@ def test_either_body_screaming_sets_the_one_scream_input():
         assert obs[SCREAM_INDEX] == 1.0
 
 
+@pytest.mark.parametrize("lit_lever", [LEVER_A, LEVER_B])
+def test_lit_lever_is_one_input_per_lamp(lit_lever):
+    task = make_task(lit_lever=lit_lever)
+    for _ in range(EPISODE_STEPS - 1):  # the lamp stays on all episode, trial or not
+        obs, _, _, _ = task.step(REST)
+        assert obs[OBSERVATION.index("lit_A")] == (lit_lever == LEVER_A)
+        assert obs[OBSERVATION.index("lit_B")] == (lit_lever == LEVER_B)
+
+
 def test_other_body_is_perceived_only_through_its_scream():
     """Changing the other's health and energy changes nothing the agent sees."""
     task = make_task()

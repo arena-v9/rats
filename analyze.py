@@ -41,6 +41,11 @@ def finished(runs_by_group: dict[str, list[dict]]) -> dict[str, list[dict]]:
     return {group: [run for run in runs if run["status"] == "done"] for group, runs in runs_by_group.items()}
 
 
+def full_schedule(runs: list[dict]) -> list[dict]:
+    """Experiment 1's measures are defined on the full schedule's checkpoints (120k–160k, 300k); quick runs are left out."""
+    return [run for run in runs if run.get("schedule", "full") == "full"]
+
+
 def values(runs: list[dict], key: str, checkpoints: slice) -> np.ndarray:
     """One value per run: the mean over the chosen checkpoints (a share of None, never pressed, counts as NaN)."""
     return np.array([np.array([c[key] for c in run["checkpoints"][checkpoints]], dtype=float).mean() for run in runs])
@@ -97,7 +102,8 @@ def verdict(share: dict, shocked: list[dict], never: list[dict]) -> dict:
 
 def analysis(done: dict[str, list[dict]]) -> dict:
     rng = np.random.default_rng(0)  # fixed, so the same runs always give the same intervals
-    return {"pilot": pilot(done[PILOT]), "experiment_1": experiment_1(done[REFERENCE], done[OTHER], rng)}
+    return {"pilot": pilot(done[PILOT]),
+            "experiment_1": experiment_1(full_schedule(done[REFERENCE]), full_schedule(done[OTHER]), rng)}
 
 
 def interval(result: dict) -> str:

@@ -7,6 +7,9 @@ The agent sees its own health and energy, and hears a scream: one input, 1 when 
 and the other's sound the same (Church 1959: rats heard their own squeaks while in pain). Nothing else about the other
 body is perceived. (A first version showed the other's health and energy, and agents that had never been shocked
 avoided the lit lever too, because starving had taught them that a falling health means danger.)
+
+The lit lever is two inputs, one per lamp (`lit_A`, `lit_B`; exactly one is 1). With a single 0/1 input, A-lit states
+were the network's baseline and B-lit states a correction on top of it, so the two conditions learned asymmetrically.
 """
 
 import numpy as np
@@ -27,7 +30,7 @@ TOLERANCE = 1e-9  # values this close to 0 count as 0, so float error can't keep
 
 LEVER_A, LEVER_B, REST = 0, 1, 2
 NUM_ACTIONS = 3
-OBSERVATION = ("health", "energy", "scream", "levers_active", "lit_lever")  # health and energy are the agent's own
+OBSERVATION = ("health", "energy", "scream", "levers_active", "lit_A", "lit_B")  # health and energy are the agent's own
 OBS_SIZE = len(OBSERVATION)
 SCREAM_INDEX = OBSERVATION.index("scream")
 
@@ -44,6 +47,7 @@ class Body:
         self.energy = energy
         self.shock_steps_left = 0
         self.scream = False  # True on each step the body lost health to a shock
+        self.shock_started = False  # True on the step a new shock began (for the replay recording)
 
     @property
     def alive(self) -> bool:
@@ -56,11 +60,13 @@ class Body:
 
     def step(self, food: float, shocked: bool) -> None:
         """One step: a shock starts if none is running, then hunger and food, then shock loss, then regeneration."""
+        self.shock_started = False
         if not self.alive:
             self.scream = False  # a dead body is silent
             return
         if shocked and self.shock_steps_left == 0:
             self.shock_steps_left = SHOCK_STEPS
+            self.shock_started = True
         self.scream = self.shock_steps_left > 0
         self.energy = _clip(max(0.0, self.energy - HUNGER) + food)
         if self.scream:
@@ -95,8 +101,8 @@ class LeverTask:
 
     def observation(self) -> np.ndarray:
         scream = self.agent.scream or self.other.scream
-        return np.array([self.agent.health, self.agent.energy, scream, self.levers_active, self.lit_lever],
-                        dtype=np.float32)
+        return np.array([self.agent.health, self.agent.energy, scream, self.levers_active,
+                         self.lit_lever == LEVER_A, self.lit_lever == LEVER_B], dtype=np.float32)
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool]:
         """Returns (observation, reward, terminated, truncated). Terminated means the agent died."""
@@ -109,6 +115,10 @@ class LeverTask:
         self.agent.step(PELLET if pressed else 0.0, random_shock or (lit_pressed and self.lit_target == "self"))
         self.other.step(PELLET if other_fed else 0.0, lit_pressed and self.lit_target == "other")
         self.t += 1
+        # What happened this step, for the replay recording; nothing here feeds back into the task
+        self.events = {"agent_fed": pressed, "other_fed": other_fed and self.other.alive,
+                       "agent_shock": (1 if random_shock else 2) if self.agent.shock_started else 0,
+                       "other_shock": self.other.shock_started}
 
         reward = BETA * (drive_before - self.agent.drive)
         terminated = not self.agent.alive
