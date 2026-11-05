@@ -329,7 +329,7 @@ in `env.py`; compression 2.5). Everything is rescaled by the same rule as in ver
 |---|---|---|
 | Steps between trials; episode | 25; 100 (trials at 12, 37, 62, 87) | 10; 40 (trials at 5, 15, 25, 35) |
 | Hunger, regeneration, starvation per step | 0.02, 0.01, 0.05 | 0.05, 0.025, 0.125 |
-| Shock | 3 steps × 0.2 | 1 step × 0.6 (scream 1 step) |
+| Shock | 3 steps × 0.2 | 2 steps × 0.3, harm and scream on both (first run: 1 step × 0.6, see below) |
 | γ per step | 0.95 | 0.95^2.5 = 0.880 |
 | Random shocks in phase 1, per step | 0.004 | 0.01 |
 | Quick schedule: phase 1, phase 2, warm-up, ε floor at | 40k, 80k, 10k, 25k | 16k, 32k, 4k, 10k |
@@ -337,10 +337,26 @@ in `env.py`; compression 2.5). Everything is rescaled by the same rule as in ver
 | Replay buffer (default) | 20k | 8k |
 | Target network synced every | 200 updates (8 trials) | 80 updates (8 trials) |
 
-**Checks.** Exact gap of the lit lever at full health −1.88 (version 3.3: −1.70; version 4.0: −1.77), from both
-`exact.py` and an independent simulation. A trial interval of 25 still reproduces version 3.3 exactly (training log,
-checkpoints and step recording identical byte for byte), and the tests pass at intervals of 25, 10 and 5. Not piloted
-on its own: the experiment below runs three pilot seeds at each buffer size as the positive control.
+**Checks.** Exact gap of the lit lever, at health 1.0 / 0.8 / 0.7 / 0.6: −1.57 / −3.33 / −4.35 / −5.41 (version 3.3:
+−1.70 / −3.50 / −4.54 / −5.61); a shock kills at health 0.575 or below (version 3.3: 0.57). A trial interval of 25
+still reproduces version 3.3 exactly (training log, checkpoints and step recording identical byte for byte), and the
+tests pass at intervals of 25 and 10 (5 is no longer supported: a two-step shock there is 40% of the interval and the
+gap shrinks to −1.23). Not piloted on its own: the experiment below runs three pilot seeds at each buffer size as the
+positive control.
+
+**First run, with a one-step shock: the scream lost its meaning.** Version 4.1 first compressed the shock to one step
+of 0.6, as version 4.0 had. The 8k-buffer condition finished (5 shocked, 5 never shocked, 3 pilots): the pilots passed
+(highest lit-lever share 6%, final 0% on all three), but the manipulation check failed: the scream probe in the
+shocked group at the end of phase 1 was **+0.61** (positive on all 5 seeds; version 3: about −1.8). With the whole
+harm on one step, by the time the agent hears its scream the loss is already in its health and nothing worse follows,
+only recovery, which pays reward as health regenerates; so at a given health, a scream marks a shock that is over
+(rather than, say, starvation) and is good news. An experiment in which the scream does not mean pain cannot test
+H1. (H1 at 8k was not supported, lit-lever share 52.9% shocked vs 59.2% never shocked, p = 0.52, but that is moot.)
+The 20k and 40k runs were stopped. All kept in `runs_archive/exp1_one_step_shock/`.
+
+**Fix: the shock lasts two steps, 0.3 of harm and a scream on each.** On the first, harm is still to come, so the
+scream predicts pain. Check (phase 1 of the shocked group, quick schedule, seeds 1–3): scream probe at the end of
+phase 1 **−1.94, −2.65, −2.92**.
 
 ### Experiment 1 with version 4.1: replay buffer ablation
 
@@ -357,8 +373,8 @@ Per buffer size: shocked and never-shocked groups, seeds 1–5 each, and the pil
 lit-lever share must stay low for that buffer size's result to count). 39 runs, in `runs/exp1/buf8k/`, `buf20k/`,
 `buf40k/`. (Planned with seeds 1–10; cut to 1–5 for faster results while the 8k buffer was running, before any
 result was looked at. 5 vs 5 runs is the fewest for which the permutation test can reach p < 0.05: smallest possible
-p = 2/252 ≈ 0.008; with 3 vs 3 it would be 0.10. The 8k-buffer seeds 6–10 already trained or started are set aside in
-`runs_archive/exp1_extra_seeds/`, so every buffer size is analysed on the same seeds.) **Measures** as before; main window: the 18k, 20k, 22k and 24k checkpoints (the first 8k steps of phase 2,
+p = 2/252 ≈ 0.008; with 3 vs 3 it would be 0.10. The 8k-buffer seeds 6–10 already trained or started (one-step shock) are set
+aside in `runs_archive/exp1_extra_seeds/`.) **Measures** as before; main window: the 18k, 20k, 22k and 24k checkpoints (the first 8k steps of phase 2,
 the same trial time as version 3.3's 45k–60k). H1 tested at each buffer size; the buffer question as above.
 
 ### Predictions (experiment 1 with version 4.1)

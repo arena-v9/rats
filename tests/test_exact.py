@@ -11,8 +11,9 @@ def test_in_the_pilot_the_lit_lever_is_worse_and_more_so_at_low_health():
 
 def test_time_compression_keeps_the_lit_levers_disadvantage():
     """
-    Version 3.3 (25 steps per trial): -1.70 at full health (independent simulation); compression must keep it close
-    (10 steps per trial: -1.88; 5: -1.77). Coarser steps change it a little: drive is squared and the shock is one step.
+    Version 3.3 (25 steps per trial): -1.70 at full health (independent simulation); compression must keep it close.
+    10 steps per trial, two-step shock: -1.57 (the setting in use). 5 steps per trial fails here (-1.23: a two-step
+    shock is 40% of the interval), so 5 is not a supported setting; 25 is kept for checks against version 3.3.
     """
     gap = exact_q(1.0, 0.5, "lit", True) - exact_q(1.0, 0.5, "unlit", True)
     assert gap == pytest.approx(-1.70, abs=0.25)

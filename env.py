@@ -15,7 +15,7 @@ Time is compressed (version 4): trials are TRIAL_INTERVAL = 10 steps apart inste
 TIME_COMPRESSION = 2.5 steps of version 3. Up to version 3.3 there were 24 passive steps between trials, so 96% of
 transitions (and of training) were steps on which the agent's action did nothing. Everything defined per step is
 rescaled together so the task is the same per trial: trial spacing, episode length, hunger, regeneration, starvation,
-the shock (same 0.6 of health, in fewer steps), the other's meals, and, in agent.py and train.py, the discount, the
+the shock (same 0.6 of health, in two steps instead of three), the other's meals, and, in agent.py and train.py, the discount, the
 random-shock probability, step counts, buffer size and target-network sync. The exact Q-values the agent has to learn
 stay close (gap of the lit lever at full health: −1.88 at 10 steps per trial, −1.70 at 25). Version 4.0 used 5 steps
 per trial; with one gradient update per step that left too few updates per trial for accurate values (version 4.1).
@@ -53,7 +53,10 @@ PELLET = 0.5  # energy from one meal, capped at 1 (per trial, so not rescaled)
 REGENERATION = per_step(0.01)  # health gained per step while energy > 0
 STARVATION = per_step(0.05)  # health lost per step while energy is 0
 SHOCK_HEALTH = 0.6  # health lost to one shock, in total
-SHOCK_STEPS = max(1, round(3 / TIME_COMPRESSION))  # a shock lasts this many steps (1); the body screams throughout
+# A shock lasts this many steps (2 at 10 steps per trial; 3 uncompressed), with harm and a scream on each. At least two:
+# on the first, the scream comes with harm still to come, so it predicts pain. With one step (version 4.1 at first)
+# the harm was over by the time the scream was heard, and the shocked agents learned the scream as good news.
+SHOCK_STEPS = max(2, round(3 / TIME_COMPRESSION))
 SHOCK_LOSS = round(SHOCK_HEALTH / SHOCK_STEPS, 12)  # health lost per shock step
 BETA = 10  # reward scale
 DEAD_DRIVE = 2.0
