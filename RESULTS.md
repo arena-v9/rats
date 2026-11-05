@@ -124,7 +124,7 @@ A means it is not the whole story, and the small Q-gap next to the drift may mat
 **Pilot: passed, but only on the final checkpoint again.** Final lit-lever shares 0.0%, 0.0% and 5.7%; phase-1 deaths
 1.8%, 3.1% and 2.4%. Breakdowns (above 20% after 120k) on 5 of 30 checkpoints, against 8 of 30 in version 3: seed 2 at
 280k (43%), seed 3 at 160k, 180k, 240k and 280k (67%, both lamps). They now fall on either lever, so the encoding
-asymmetry is gone, but the breakdowns are not. Runs kept in `runs/v3.1_pilot/`.
+asymmetry is gone, but the breakdowns are not. Runs deleted on 5 November (after these results were recorded).
 
 **Why: the loss was biased.** Phase 2 of the pilot is deterministic, so the true Q-values can be computed exactly by
 simulation; phase 1's by Monte Carlo. Compared with them, the networks were wrong in three ways:
@@ -165,7 +165,7 @@ down" from "reliable"), compared with versions 3 and 3.1 on breakdowns and again
 **Stopped at 260–265k of 300k (enough to read): better, still not reliable.** Breakdowns (above 20%) on 5 of 40
 checkpoints from 120k to 260k, against 3 of 24 in version 3.1, and smaller (at most 23%, against 39%). But many
 checkpoints sat at 10–20%, and seed 4 broke down at 120–140k, in the main measure's window. The loss fix alone is not
-enough. Runs kept in `runs/v3.2_pilot/`.
+enough. Runs deleted on 5 November (after these results were recorded).
 
 ### Version 3.3: γ 0.95, a 20k replay buffer, no store of deaths
 
@@ -207,7 +207,7 @@ compares the learned Q-gap on visited trial states with the exact one.
 20% (highest 7%, at 55k on seed 4); final lit-lever share 0.0% on every seed. The learned Q-gap on visited trial states
 came within 0.3 of the exact gap (−1.70) by 60–70k and stayed there (final −1.50 to −1.74), with the right sign on
 100% of trial states. Phase-1 deaths after ε reached its floor: 2.0%, 0.7%, 3.9%, 2.6%, 2.0% of episodes. Gradient
-clipping never acted (0% of updates). About 8 minutes per run, five at once. Runs kept in `runs/v3.3_pilot/`.
+clipping never acted (0% of updates). About 8 minutes per run, five at once. Runs deleted on 5 November (after these results were recorded).
 
 **One weakness: death is forgotten.** Without the store of deaths, deaths left the 20k buffer by about 70k, after
 which the TD errors on death transitions could no longer be measured and the probe grid showed the gap at low health
