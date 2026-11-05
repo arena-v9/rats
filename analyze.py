@@ -11,6 +11,7 @@ Markdown for RESULTS.md; the viewer (ui/serve.py) shows the same analysis.
 """
 
 import json
+import re
 import sys
 
 import numpy as np
@@ -39,7 +40,8 @@ def collections() -> list[str]:
     """Every folder under runs/ that holds group folders ("" for runs/ itself), e.g. "exp1/buf20k"."""
     found = {path.parent.parent.parent.relative_to(RUNS_DIR).as_posix() for group in GROUPS
              for path in RUNS_DIR.glob(f"**/{group}/seed_*/metrics.json")}
-    return sorted("" if c == "." else c for c in found)
+    natural = lambda name: [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", name)]
+    return sorted(("" if c == "." else c for c in found), key=natural)  # buf20k before buf100k
 
 
 def load_all(collection: str = "") -> dict[str, list[dict]]:

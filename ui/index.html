@@ -119,7 +119,7 @@ const GROUPS = {
 const EXPERIMENT = ["shocked", "never_shocked"];
 const POLL_MS = 20000;
 const state = { data: null, tab: "training", group: "all", seed: "mean", error: null,
-  collection: new URLSearchParams(location.search).get("runs") ?? null };  // null: the newest collection
+  collection: new URLSearchParams(location.search).get("runs") ?? null };  // null: the first collection
 
 // ---------- helpers ----------
 function el(tag, attrs = {}, ...children) {
@@ -484,8 +484,8 @@ async function load() {
     let response = await fetch(`summary.json${query}`, { cache: "no-store" });
     if (response.ok && state.collection === null) {  // first load: show the newest collection that has runs
       const listing = await response.clone().json();
-      const newest = listing.collections.filter(c => c !== "").sort().at(-1);
-      if (newest !== undefined) { state.collection = newest; response = await fetch(`summary.json?runs=${encodeURIComponent(newest)}`, { cache: "no-store" }); }
+      const first = listing.collections.filter(c => c !== "")[0];  // the server lists them in natural order
+      if (first !== undefined) { state.collection = first; response = await fetch(`summary.json?runs=${encodeURIComponent(first)}`, { cache: "no-store" }); }
       else state.collection = "";
     }
     if (!response.ok) throw new Error(`summary.json: HTTP ${response.status}`);
