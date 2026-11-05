@@ -45,6 +45,12 @@ def series(runs: list[dict], key: str) -> tuple[np.ndarray, np.ndarray]:
     return steps, values
 
 
+def rolling_mean(values: np.ndarray, width: int) -> np.ndarray:
+    """Centred rolling mean; at the ends, the mean of the points available (no padding, no extrapolation)."""
+    half = width // 2
+    return np.array([np.nanmean(values[max(0, i - half): i + half + 1]) for i in range(len(values))])
+
+
 def main_window(run: dict) -> float:
     first, last = run["main_window"]
     return np.mean([c["lit_share"] for c in run["checkpoints"] if first <= c["step"] <= last])
@@ -112,8 +118,13 @@ def time_course() -> None:
         ax.axvspan(first / 1000, last / 1000, color=GRID, alpha=0.6, lw=0, zorder=1)
         for group in ("never_shocked", "shocked"):
             steps, v = series(load(RUNS / buffer / group), "lit_share")
+            mean = 100 * np.nanmean(v, axis=0)
             keep = steps >= 16
-            ax.plot(steps[keep], 100 * np.nanmean(v, axis=0)[keep], color=COLORS[group], zorder=3)
+            # Raw checkpoint means as faint dots (including the end of phase 1, 16k) ...
+            ax.scatter(steps[keep], mean[keep], s=14, color=COLORS[group], alpha=0.3, linewidths=0, zorder=3)
+            # ... and the trend: a centred rolling mean over 3 checkpoints (6k steps), within phase 2 only
+            phase2 = steps > 16
+            ax.plot(steps[phase2], rolling_mean(mean[phase2], 3), color=COLORS[group], zorder=4)
         ax.axhline(50, color=MUTED, lw=1, ls=(0, (4, 3)), zorder=2)
         if forget[buffer]:
             ax.axvline(forget[buffer], color=INK2, lw=1, zorder=2)
@@ -132,7 +143,8 @@ def time_course() -> None:
     handles = [plt.Line2D([], [], color=COLORS[g], lw=2, label=LABELS[g]) for g in COLORS]
     axes[0].legend(handles=handles, loc="upper left", bbox_to_anchor=(0, 1.2), ncol=2, fontsize=10.5)
     title(fig, "The avoidance is temporary, and lasts as long as the agent's own pain stays in memory",
-          "Mean of 5 runs per group, at every 2k-step checkpoint. Dashed: indifferent (50%).")
+          "Lines: mean of 5 runs, smoothed over 3 neighbouring checkpoints (6k steps). Faint dots: unsmoothed "
+          "checkpoint means. Dashed: indifferent (50%).")
     save(fig, "2_time_course.png")
 
 
