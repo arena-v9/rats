@@ -298,7 +298,7 @@ target network syncs after the same number of trials either way). If 1 matches v
 
 ### Results (version 4)
 
-**Pilot: reliable at both settings** (quick schedule, 5 seeds each; runs in `runs/v4_updates1/` and `runs/v4_updates5/`):
+**Pilot: reliable at both settings** (quick schedule, 5 seeds each; runs in `runs_archive/v4_updates1/` and `runs_archive/v4_updates5/`):
 
 | | Version 3.3 | Version 4, 1 update/step | Version 4, 5 updates/step |
 |---|---|---|---|
@@ -316,7 +316,7 @@ target network syncs after the same number of trials either way). If 1 matches v
   shock, so the extra deaths come from training less, not from the shock killing at 0.60 instead of 0.57.
 - Compression's speed-up comes only from training less per trial: at five updates per step a run costs the same as
   in version 3.3.
-- Also run: 2 updates per step (5 seeds, `runs/v4_updates2/`, not analysed) and 3 (stopped part-way when version 4.1
+- Also run: 2 updates per step (5 seeds, `runs_archive/v4_updates2/`, not analysed) and 3 (stopped part-way when version 4.1
   was chosen).
 
 ### Version 4.1: 10 steps per trial, one update per step
