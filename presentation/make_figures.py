@@ -227,15 +227,20 @@ def positive_control() -> None:
 
 
 def before_forgetting() -> None:
-    """Each run's lit-lever share at the end of phase 1 (16k) and 2k steps into phase 2 (18k); 20k/40k buffers."""
+    """
+    Each run's lit-lever share 2k steps into phase 2 (18k) next to its main-window average (18k–24k, as in figure 1).
+    Buffer 40k (at 18k the 20k-buffer runs are identical).
+    """
     rng = np.random.default_rng(2)
-    at = lambda runs, step: 100 * np.array([next(c["lit_share"] for c in r["checkpoints"] if c["step"] == step) for r in runs])
+    at_18k = lambda runs: 100 * np.array([next(c["lit_share"] for c in r["checkpoints"] if c["step"] == 18000) for r in runs])
+    window = lambda runs: 100 * np.array([main_window(r) for r in runs])
     fig, axes = plt.subplots(1, 2, figsize=(10, 5.6), sharey=True)
     fig.subplots_adjust(left=0.1, right=0.97, top=0.74, bottom=0.12, wspace=0.08)
-    for ax, (step, name) in zip(axes, ((16000, "End of phase 1\n(lit lever has done nothing yet)"),
-                                       (18000, "2k steps into phase 2\n(lit lever makes the other scream)"))):
+    panels = ((at_18k, "2k steps into phase 2\n(checkpoint at 18k)", "p = 0.056"),
+              (window, "Main window average\n(18k–24k, as in the main result)", "p = 0.008"))
+    for ax, (measure, name, p_text) in zip(axes, panels):
         for j, group in enumerate(("shocked", "never_shocked")):
-            v = at(load(RUNS / "buf40k" / group), step)
+            v = measure(load(RUNS / "buf40k" / group))
             ax.scatter(j + np.linspace(-0.08, 0.08, len(v)), v, s=40, color=COLORS[group], alpha=0.55, linewidths=0, zorder=3)
             low, high = bootstrap_ci(v, rng)
             ax.plot([j, j], [low, high], color=COLORS[group], lw=2, zorder=4)
@@ -247,13 +252,14 @@ def before_forgetting() -> None:
         ax.tick_params(axis="x", colors=INK2, labelsize=10.5, length=0)
         ax.set_xlim(-0.5, 1.6)
         ax.grid(axis="x", visible=False)
+        ax.text(1.55, 95, p_text, ha="right", fontsize=10.5, color=INK if p_text.endswith("0.008") else MUTED,
+                fontweight="bold" if p_text.endswith("0.008") else "normal")
     axes[0].set_ylim(0, 100)
     axes[0].set_yticks([0, 25, 50, 75, 100], ["0%", "25%", "50%", "75%", "100%"])
     axes[0].set_ylabel("Presses on the lever that shocks the other")
-    axes[1].text(1.55, 95, "p = 0.056", ha="right", fontsize=10, color=MUTED)
-    title(fig, "The avoidance appears as soon as the lit lever makes the other scream",
-          "Replay buffer 20k and 40k (identical runs this early). Dots: runs (5 per group). Bars: mean with 95% "
-          "bootstrap interval.\nExploratory: chosen after seeing the results.")
+    title(fig, "Avoidance is strongest right away, before the agent unlearns its own pain",
+          "Replay buffer 40k. Dots: runs (5 per group). Bars: mean with 95% bootstrap interval. The 18k checkpoint is "
+          "exploratory\n(chosen after seeing the results); the main window is the planned measure.")
     save(fig, "6_before_forgetting.png")
 
 
