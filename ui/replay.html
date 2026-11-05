@@ -149,8 +149,8 @@ kbd { font: 0.75rem ui-monospace, monospace; border: 1px solid var(--border); bo
       </div>
       <div class="strip-wrap card">
         <h3>This episode</h3>
-        <p class="sub">One column per step; click or drag to seek.</p>
-        <canvas class="strip" id="timeline" height="150"></canvas>
+        <p class="sub">One column per step; step numbers of trials in bold. Click or drag to seek.</p>
+        <canvas class="strip" id="timeline"></canvas>
         <div class="legend">
           <span><i style="background:#ff8a3d"></i>Pressed lit lever</span>
           <span><i style="background:#46c37b"></i>Pressed unlit lever</span>
@@ -404,28 +404,35 @@ function sizeScene() {
 }
 
 // ---------- the episode timeline ----------
+// The timeline scales with the episode: one column per step, however many steps a run's episodes have (100 before
+// time was compressed, 20 at k = 5). Gaps between columns and the step axis adapt to the column width.
+const TIMELINE_GUTTER = 92, AXIS_HEIGHT = 16;
 function drawTimeline() {
   const canvas = $("timeline");
   if (!canvas || !state.ep) return;
-  const dpr = window.devicePixelRatio || 1, width = canvas.clientWidth, height = 150;
-  canvas.width = width * dpr; canvas.height = height * dpr; canvas.style.height = `${height}px`;
-  const g = canvas.getContext("2d");
-  g.scale(dpr, dpr);
-  const e = state.ep, n = e.t.length, gutter = 92, cell = (width - gutter) / episodeSteps();
-  const ink2 = cssVar("--ink-2"), grid = cssVar("--grid"), muted = cssVar("--muted");
+  const e = state.ep, n = e.t.length, steps = episodeSteps();
   const rows = [
     { label: "Levers", h: 12 }, { label: "Agent shock", h: 8 }, { label: "Other shock", h: 8 },
     { label: "Agent pellet", h: 8 }, { label: "Other pellet", h: 8 },
     { label: "Agent health", h: 22 }, { label: "Agent energy", h: 22 }, { label: "Reward", h: 26 },
   ];
   let y = 2;
-  g.font = "11px system-ui, sans-serif"; g.textBaseline = "middle";
   for (const row of rows) { row.y = y; y += row.h + 4; }
+  const axisY = y, height = axisY + AXIS_HEIGHT;
+  const dpr = window.devicePixelRatio || 1, width = canvas.clientWidth;
+  canvas.width = width * dpr; canvas.height = height * dpr; canvas.style.height = `${height}px`;
+  const g = canvas.getContext("2d");
+  g.scale(dpr, dpr);
+  const gutter = TIMELINE_GUTTER, cell = (width - gutter) / steps;
+  const gap = cell >= 14 ? 2 : cell > 3 ? 1 : 0, w = Math.max(1, cell - gap);
+  const ink = cssVar("--ink"), ink2 = cssVar("--ink-2"), grid = cssVar("--grid"), muted = cssVar("--muted");
+  const col = i => gutter + i * cell;
+  g.font = "11px system-ui, sans-serif"; g.textBaseline = "middle";
   for (const row of rows) {
     g.fillStyle = ink2; g.fillText(row.label, 0, row.y + row.h / 2);
-    g.fillStyle = grid; g.fillRect(gutter, row.y, cell * episodeSteps(), row.h);
+    g.fillStyle = grid;
+    for (let i = 0; i < steps; i++) g.fillRect(col(i), row.y, w, row.h);  // one empty cell per step
   }
-  const col = i => gutter + i * cell, w = Math.max(1, cell - (cell > 3 ? 1 : 0));
   for (let i = 0; i < n; i++) {
     const x = col(i);
     if (e.active[i]) {
@@ -443,7 +450,7 @@ function drawTimeline() {
   }
   // Reward: bars from a zero line, scaled to the episode's largest |reward|
   const r = rows[7], mid = r.y + r.h / 2, scale = Math.max(...e.reward.map(Math.abs), 1e-6);
-  g.fillStyle = muted; g.fillRect(gutter, mid, cell * episodeSteps(), 1);
+  g.fillStyle = muted; g.fillRect(gutter, mid, cell * steps, 1);
   for (let i = 0; i < n; i++) {
     const v = e.reward[i] / scale * (r.h / 2 - 1);
     g.fillStyle = v >= 0 ? "#46c37b" : "#e5484d";
@@ -451,13 +458,24 @@ function drawTimeline() {
   }
   g.fillStyle = muted; g.textAlign = "right";
   g.fillText(`±${scale.toFixed(2)}`, gutter - 4, r.y + 6);
-  g.textAlign = "left";
+  // Step axis: every step when the columns are wide enough to label, else every 5th or 10th; trial steps in bold
+  g.fillStyle = ink2; g.textAlign = "left"; g.fillText("Step", 0, axisY + AXIS_HEIGHT / 2);
+  const every = cell >= 16 ? 1 : cell >= 5 ? 5 : 10;
+  g.textAlign = "center";
+  for (let i = 0; i < steps; i++) {
+    const trial = i < n ? e.active[i] === 1 : false;
+    if (i % every !== 0 && !(trial && cell >= 9)) continue;
+    g.font = `${trial ? "600 " : ""}10px system-ui, sans-serif`;
+    g.fillStyle = trial ? ink : muted;
+    g.fillText(String(i), col(i) + w / 2, axisY + AXIS_HEIGHT / 2);
+  }
+  g.font = "11px system-ui, sans-serif"; g.textAlign = "left";
   // Playhead
-  g.strokeStyle = cssVar("--ink"); g.lineWidth = 1.5;
-  g.strokeRect(col(state.frame) - 0.5, 1, Math.max(cell, 2) + 1, y - 4);
+  g.strokeStyle = ink; g.lineWidth = 1.5;
+  g.strokeRect(col(state.frame) - 0.5, 1, Math.max(w, 2) + 1, axisY - 3);
 }
 function seekFromTimeline(event) {
-  const canvas = $("timeline"), rect = canvas.getBoundingClientRect(), gutter = 92;
+  const canvas = $("timeline"), rect = canvas.getBoundingClientRect(), gutter = TIMELINE_GUTTER;
   const cell = (rect.width - gutter) / episodeSteps(), i = Math.floor((event.clientX - rect.left - gutter) / cell);
   if (state.ep && i >= 0) { state.frame = Math.min(i, state.ep.t.length - 1); state.playing = false; update(); }
 }
