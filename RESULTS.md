@@ -388,7 +388,53 @@ the same trial time as version 3.3's 45k–60k). H1 tested at each buffer size; 
 
 ### Results (experiment 1 with version 4.1)
 
-*Running.*
+*The predictions above were not filled in before the runs.* 39 runs (seeds 1–5 per group, 3 pilots per buffer
+size), commit `79cce02`, quick schedule, 10 steps per trial, one update per step, two-step shock.
+
+**Pilots passed at every buffer size** (lit-lever share at most 16%, 0% at the end on all 9 runs). **Manipulation
+check passed:** at the end of phase 1 the scream lowered the shocked agents' value (scream probe −2.49 at 8k, −2.42 at
+20k and 40k; all 15 runs negative), and did nothing in never-shocked agents (−0.00 to −0.03). In phase 2 the agent
+itself was never shocked (0 times in all 30 runs); the other was shocked 36,446 times.
+
+**H1: supported at 20k and 40k, not at 8k.** Lit-lever share, mean of the main window (18k–24k):
+
+| Buffer | Shocked | Never shocked | Never − shocked [95% CI] | p | Shocked runs below 50% |
+|---|---|---|---|---|---|
+| 8k | 37.1% | 50.3% | +13.2 [−3.5, +33.3] | 0.29 | 3/5 |
+| 20k | 18.0% | 51.2% | +33.2 [+19.9, +45.1] | 0.016 | 5/5 |
+| 40k | 15.0% | 51.7% | +36.7 [+24.0, +46.9] | 0.008 | 5/5 |
+
+The Q-gap tells the same story (lit − unlit in the main window: −0.07 in shocked agents at 20k and 40k, about 0 in
+never-shocked ones; p = 0.008 for both). The true gap is 0 here: the lit lever costs the agent nothing in phase 2.
+Never-shocked agents are indifferent (around 50%) throughout, as they should be. The only thing that distinguishes the
+lit lever for the agent is the scream it causes (the other's health is not observed), so the avoidance is the scream's
+learned meaning at work.
+
+**The avoidance fades, and the buffer sets how fast.** Lit-lever share of the shocked group by checkpoint (%):
+
+| Buffer | 18k | 20k | 22k | 24k | 28k | 32k | 36k | 40k | 44k | 48k |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 8k | 33 | 39 | 39 | 37 | 44 | 52 | 39 | 37 | 46 | 37 |
+| 20k | 11 | 13 | 26 | 23 | 21 | 43 | 59 | 56 | 40 | 38 |
+| 40k | 11 | 13 | 15 | 22 | 30 | 34 | 26 | 35 | 46 | 35 |
+
+The scream probe of the shocked group decays toward the never-shocked level (about −0.1 to −0.2) at a rate set by the
+buffer: at 24k −0.34 (8k), −0.91 (20k), −0.96 (40k); at 36k −0.20, −0.31, −0.71; at 48k −0.05, −0.14, −0.50. At 20k the
+avoidance ends between 32k and 36k, as the phase-1 shocks leave the buffer (by 36k); at 40k, where they never leave,
+avoidance and the scream's meaning last longest. At the final checkpoint no difference between the groups is clear at
+any buffer size. This is extinction: in phase 2 a scream is never followed by harm to the agent, so TD learning
+removes its meaning, and the faster the more of the agent's replayed experience says so.
+
+**Caveats.**
+
+- Five runs per group. 20k and 40k give the smallest p-values possible with 5 vs 5 runs (0.008) or close to it; with
+  three buffer sizes tested, a Bonferroni correction gives 0.048 and 0.024, still below 0.05.
+- 20k and 40k are not independent evidence in the main window: with the same seeds, their runs are identical until
+  the 20k buffer first fills (step 20k), so the 18k and 20k checkpoints are shared and only 22k and 24k differ. The
+  difference between them shows later (28k–44k).
+- The main window and buffer sizes were chosen before the runs; the seeds were cut from 10 to 5 per group before any
+  result was seen. The first attempt at this experiment (one-step shock) is reported above and failed its
+  manipulation check.
 
 ## Earlier versions of experiment 1
 
