@@ -425,6 +425,24 @@ avoidance and the scream's meaning last longest. At the final checkpoint no diff
 any buffer size. This is extinction: in phase 2 a scream is never followed by harm to the agent, so TD learning
 removes its meaning, and the faster the more of the agent's replayed experience says so.
 
+**Before forgetting: the end of phase 1 and the first phase-2 checkpoint** (exploratory, chosen after seeing the
+results; the main measure stays the planned window). Lit-lever share:
+
+| Checkpoint | Buffer | Shocked | Never shocked | Never − shocked [95% CI] | p |
+|---|---|---|---|---|---|
+| 16k, end of phase 1 | 8k | 55.7% | 59.5% | +3.8 [−13.7, +21.4] | 0.71 |
+| | 20k, 40k | 53.2% | 38.7% | −14.6 [−39.0, +4.8] | 0.33 |
+| 18k, 2k steps into phase 2 | 8k | 33.0% | 51.8% | +18.7 [−3.7, +40.8] | 0.28 |
+| | 20k, 40k | 10.9% | 40.4% | +29.5 [+7.6, +49.3] | 0.056 |
+
+- At the end of phase 1 the groups do not differ: the lit lever has done nothing yet, so neither group has a reason
+  to avoid it. The avoidance appears in phase 2, once the lit lever makes the other scream; it is not a leftover
+  preference for one lever.
+- Two thousand steps into phase 2 the avoidance is at its strongest: 4 of 5 shocked runs pressed the lit lever on
+  1–9% of trials (the fifth on 41%). The difference is not clear (p = 0.056) because the never-shocked runs are still
+  unsettled that early (12% to 65%); the four-checkpoint main window averages this out.
+- 20k and 40k are identical at both checkpoints (same runs until the 20k buffer first fills, at step 20k).
+
 **Caveats.**
 
 - Five runs per group. 20k and 40k give the smallest p-values possible with 5 vs 5 runs (0.008) or close to it; with
