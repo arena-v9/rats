@@ -560,7 +560,7 @@ function episodeHead() {
   const end = list.end[i], inProgress = end === 0 && i === list.count - 1 && currentRun()?.status !== "done";
   const ending = end === 1 ? "agent died" : end === 2 ? `full ${episodeSteps()} steps` : inProgress ? "still being played" : "cut short by the switch to phase 2";
   const presses = list.lit_presses[i] + list.unlit_presses[i];
-  node.innerHTML = `<strong>Episode ${fmt.int(i)}</strong> of ${fmt.int(list.count - 1)} · phase ${list.phase[i]} ·
+  node.innerHTML = `<strong>Episode ${fmt.int(i)}</strong> of ${fmt.int(list.count - 1)} (${episodeSteps()}-step episodes) · phase ${list.phase[i]} ·
     lever ${ACTIONS[list.lit[i]]} lit · training steps ${fmt.int(list.start[i])}–${fmt.int(list.start[i] + list.length[i] - 1)} ·
     lit presses ${list.lit_presses[i]}/${presses} · ${list.explored[i]} random actions · return ${fmt.signed(list.return[i])} · ${ending}`;
 }

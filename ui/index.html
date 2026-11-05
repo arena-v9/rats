@@ -514,10 +514,12 @@ function syncCollections() {
   select.replaceChildren(...names.map(c => el("option", { value: c }, c === "" ? "runs/ (top level)" : c)));
   select.value = state.data?.collection ?? "";
   // What the shown runs were trained with: buffer size, schedule and code version (from their metrics)
-  const runs = Object.values(state.data?.runs ?? {}).flat();
+  const runs = Object.values(state.data?.runs ?? {}).flat()
+    .map(r => ({ episode_steps: 100, time_compression: 1, ...r }));  // runs from before compression lack these keys
   const describe = (key, f = v => v) => [...new Set(runs.map(r => r[key]).filter(v => v != null))].map(f).join(", ") || "–";
   document.getElementById("run-info").textContent = runs.length
-    ? `Replay buffer ${describe("buffer_size", v => fmt.steps(v))} · ${describe("schedule")} schedule · ${runs.length} runs · code ${describe("commit")}`
+    ? `Episodes of ${describe("episode_steps")} steps (time compression ${describe("time_compression")}) · replay buffer ${describe("buffer_size", v => fmt.steps(v))} · ` +
+      `${describe("schedule")} schedule · ${runs.length} runs · code ${describe("commit")}`
     : "No runs in this collection yet.";
   const replay = document.querySelector('.tabs a[href^="replay.html"]');
   if (replay) replay.href = `replay.html?runs=${encodeURIComponent(state.collection ?? "")}`;
