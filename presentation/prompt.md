@@ -5,25 +5,58 @@ records (`RESULTS.md`, experiment 1 on version 4.1); use these numbers as given 
 
 ---
 
-You are making a short slide deck (about 8–10 main slides, plus an addendum) presenting a reinforcement-learning
-experiment. The audience is technical (ML / AI research) but not specialists in animal learning. Make it clear,
-visual and honest about what the result does and does not show.
+You are making the second part of a slide deck (about 8–10 main slides, plus an addendum) about a
+reinforcement-learning research project. The audience is technical (ML / AI research) but not specialists in animal
+learning. Make it clear, visual and honest about what the result does and does not show.
+
+## Where this fits: after the gridworld experiment
+
+The deck **opens with the gridworld experiment** ("Emergent Harm Avoidance from Shared Vulnerability: A Gridworld
+Test"), presented before these slides. By the time your slides start, the audience has seen:
+
+- the question: can an agent learn to avoid harming another body **without being rewarded for it**, because it has a
+  vulnerable body of its own (Christov-Moore et al., 2023, argue that empathy needs vulnerability);
+- the homeostatic body (health and energy) and the reward, **drive reduction** of the agent's own body only
+  (Keramati & Gutkin, 2014);
+- the mechanism under test, a **shared representation**: the other body appears on the same input channels as the
+  agent's own, so what the network learns from its own harm may also respond to the other's;
+- the gridworld design: a 7×7 map with fire and food, a scripted NPC with the same body, and a test of whether the
+  agent avoids pushing the NPC onto fire, compared with a matched push onto floor.
+
+**Do not state any results for the gridworld.** Its harm-avoidance test has not been run (the NPC and the evaluation
+are still being built); it is presented as the idea and the design. Do not repeat its explanations at length either:
+refer back to them ("the same body and reward as in the gridworld").
+
+**This experiment (the lever task) is the same idea in a cleaner design, with fewer confounders.** It is the part
+with results. Make the transition explicit with one slide comparing the two designs:
+
+| Confounder in the gridworld | How the lever task removes it |
+|---|---|
+| **Self-protection:** pushing the NPC toward fire also moves the agent next to fire, so avoiding the push may just protect the agent (the gridworld needs matched floor-push layouts with equal fire distance) | Both levers are identical for the agent: same position, same food. The only difference is what happens to the other rat |
+| **Indirect benefits of harming:** a push can clear the path to food or weaken a competitor for it (the gridworld needs special zero-cost layouts and discards pushes onto fire in training) | The other rat's fate cannot affect the agent at all (tested: the agent's rewards are identical whether or not the lever shocks the other), so an agent that knew the truth would be exactly indifferent: 50% on each lever |
+| **Many routes from the other's body to the agent's choices:** the NPC is seen through its position, health and energy on shared channels, and spatial features of a CNN; a falling health value alone can teach "danger" without any transfer of pain (an earlier version of the lever task showed exactly this: agents that had never been hurt avoided the lever when they could see the other's health) | The other rat is perceived **only** through one input: its scream, the same input as the agent's own scream. Nothing else about it is visible |
+| **Own pain is not manipulated:** every gridworld agent learns from fire, so "has it felt this harm itself?" is left to a later stage | Own pain is the manipulated variable: a **shocked** and a **never-shocked** group, identical in everything else (same seeds, same random events), so the comparison isolates the agent's own pain experience |
+| **No ground truth:** whether the agent learned the right values is hard to check | Phase 2 is deterministic, so the exact values the agent should learn can be computed and compared with what it learned (this caught a training bug, see the addendum) |
+
+It also turns the gridworld's "witnessing" question (does seeing the other harmed at no cost erode avoidance?) into a
+measurable result: in phase 2 the agent hears the other's scream with no cost to itself, and the avoidance fades.
 
 ## The question
 
-Can an agent avoid harming another agent **without ever being rewarded for it**? The experiment recreates a classic
-rat study in simulation: Church (1959) found that rats who had been shocked themselves stopped pressing a lever when
-pressing it shocked another rat; rats never shocked did not. Church's explanation: the shocked rats had heard their
-own squeals while in pain, so another rat's squeal came to signal pain to them.
+The lever task recreates a classic rat study in simulation: Church (1959) found that rats who had been shocked
+themselves stopped pressing a lever when pressing it shocked another rat; rats never shocked did not. Church's
+explanation: the shocked rats had heard their own squeals while in pain, so another rat's squeal came to signal pain
+to them. In this design the scream is the shared representation, reduced to a single input.
 
 **Hypothesis (H1):** an agent that has been shocked itself avoids the lever that shocks another agent, more than an
 agent that has never been shocked.
 
 ## The setup
 
-- **Two bodies:** the agent and another rat, each with health and energy. Energy drops every step; a pellet restores
-  it. Health regenerates while fed; a shock takes 0.6 of health (over two steps); at zero health the body dies.
-- **Reward = the agent's own drive reduction only** (how much closer its own health and energy get to full). The
+- **Two bodies:** the agent and another rat, each with health and energy, with the same body rules as the
+  gridworld's (hunger, food, regeneration only while fed, starvation, death at zero health). A shock takes 0.6 of
+  health (over two steps).
+- **Reward = the agent's own drive reduction only**, as in the gridworld (how much closer its own health and energy get to full). The
   other rat and the scream never enter the reward. This is the crux of the experiment.
 - **Observation (6 inputs):** the agent's own health and energy; a **scream** input that is 1 when *either* body
   screams (the agent's own scream and the other's sound the same, as for Church's rats); whether the levers are active;
@@ -85,9 +118,10 @@ Use this wording (or close to it) for the conclusion:
 
 ## Suggested slide outline
 
-1. **Title** — e.g. "Harm avoidance without a reward for it: a simulated replication of Church (1959)".
-2. **The question** — can an agent avoid hurting another without being rewarded for it? Church's rats.
-3. **The setup** — two bodies, reward = own drive only, one shared scream input; phase 1 (conditioning) and
+1. **From the gridworld to a cleaner test** — the comparison table above: the same idea, fewer confounders.
+2. **Church's rats (1959)** — the classic result this design recreates, and why it isolates own pain: shocked vs
+   never-shocked, the other perceived only through its scream.
+3. **The setup** — same body and reward as the gridworld; one shared scream input; phase 1 (conditioning) and
    phase 2 (test). A simple diagram or the scene from the videos.
 4. **Phase 1, conditioning** — video `1_phase1_conditioning.mp4`.
 5. **Phase 2, the test** — video `2_side_by_side.mp4`: a shocked and a never-shocked agent on the same task.
@@ -96,8 +130,9 @@ Use this wording (or close to it) for the conclusion:
    memory.
 8. **Why: the scream's meaning** — `3_scream_meaning.png`: a scream means pain, until experience teaches otherwise.
 9. **Conclusion and caveats** — the wording above; what it does and does not show.
-10. **Next steps** — more seeds (10 per group), a longer phase 2 to see extinction fully, and a model with a
-    separate pain-prediction system that reward learning cannot overwrite.
+10. **Next steps** — more seeds (10 per group), a longer phase 2 to see extinction fully, a model with a separate
+    pain-prediction system that reward learning cannot overwrite, and back to the gridworld with what was learned
+    here (the training fixes, and a direct manipulation of the agent's own pain).
 
 ## Assets (in `presentation/out/`)
 
@@ -115,6 +150,7 @@ health (H) and energy (E) bars under each.
 
 ## Style
 
+- Keep the visual style consistent with the gridworld slides that come before.
 - One message per slide; put the takeaway in the slide title as a sentence (the figures' titles already do this).
 - Colours, to match the figures: **shocked = blue `#2a78d6`**, **never shocked = orange `#eb6834`**; text near-black
   `#0b0b0b` and grey `#52514e` on an off-white `#fcfcfb` background. The videos have a dark background; give them a
