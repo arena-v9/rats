@@ -27,7 +27,7 @@ from scene import draw  # noqa: E402
 
 RUNS, OUT = ROOT / "runs" / "exp1", Path(__file__).resolve().parent / "out"
 WIDTH, HEIGHT, FPS = 1920, 1080, 8
-FRAMES_PER_STEP, FRAMES_PER_EVENT = 2, 6  # 4 steps a second; trials and screams held 0.75 s
+FRAMES_PER_STEP, FRAMES_PER_EVENT = 4, 16  # quiet steps 0.5 s; trials and screams held 2 s, long enough to read
 BACKGROUND, INK, INK2, MUTED = (13, 13, 16), (240, 239, 236), (195, 194, 183), (137, 135, 129)
 SHOCKED, NEVER = (57, 135, 229), (217, 89, 38)  # the figures' series colours, dark-surface steps
 FONTS = "/usr/share/fonts/truetype/dejavu/"
