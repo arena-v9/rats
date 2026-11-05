@@ -55,8 +55,9 @@ SCHEDULES = {
 # evaluations; log_every: steps between training-curve points; main_window: the checkpoints the main measure averages
 # (full: 120k, 140k, 160k uncompressed; quick: 45k to 60k, the first 20k uncompressed steps of phase 2)
 EPSILON_START, EPSILON_END = 1.0, 0.02
-# Gradient updates per environment step. With time compressed, 1 means fewer updates per trial than before (5 instead
-# of 25 at k = 5); TIME_COMPRESSION keeps the updates per trial of version 3.3. An ablation decides (version 4).
+# Gradient updates per environment step: 1, so 10 updates per trial (version 3.3: 25). Version 4.0 compressed further
+# (5 steps per trial): with 1 update per step its values were less accurate; 5 per step matched version 3.3 but cost
+# as much. The option stays for ablations.
 UPDATES_PER_STEP = 1
 TARGET_SYNC_STEPS = steps(200)  # the target network syncs every 8 trials (200 uncompressed steps) of updates
 MAX_PARALLEL = min(10, os.cpu_count() or 1)  # one core per run

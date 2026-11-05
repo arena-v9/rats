@@ -6,7 +6,7 @@ from env import (EPISODE_STEPS, HUNGER, LEVER_A, LEVER_B, OBSERVATION, PELLET, R
                  LeverTask)
 
 # The rules are written in terms of the constants, so these tests hold at any time compression (run them with
-# LEVER_TASK_TIME_COMPRESSION=1 too: that is version 3.3's task)
+# LEVER_TASK_TRIAL_INTERVAL=25 too: that is version 3.3's task)
 
 LEVERS_ACTIVE_INDEX = OBSERVATION.index("levers_active")
 AGENT_INDICES = [OBSERVATION.index("health"), OBSERVATION.index("energy")]

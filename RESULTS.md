@@ -316,6 +316,60 @@ target network syncs after the same number of trials either way). If 1 matches v
   shock, so the extra deaths come from training less, not from the shock killing at 0.60 instead of 0.57.
 - Compression's speed-up comes only from training less per trial: at five updates per step a run costs the same as
   in version 3.3.
+- Also run: 2 updates per step (5 seeds, `runs/v4_updates2/`, not analysed) and 3 (stopped part-way when version 4.1
+  was chosen).
+
+### Version 4.1: 10 steps per trial, one update per step
+
+**Change from version 4.** Decision by the experimenter: keep one gradient update per step, and compress less, so
+that a trial gets 10 updates instead of 5 (version 3.3: 25). Trials are 10 steps apart instead of 5 (`TRIAL_INTERVAL`
+in `env.py`; compression 2.5). Everything is rescaled by the same rule as in version 4:
+
+| | Version 3.3 | Version 4.1 |
+|---|---|---|
+| Steps between trials; episode | 25; 100 (trials at 12, 37, 62, 87) | 10; 40 (trials at 5, 15, 25, 35) |
+| Hunger, regeneration, starvation per step | 0.02, 0.01, 0.05 | 0.05, 0.025, 0.125 |
+| Shock | 3 steps × 0.2 | 1 step × 0.6 (scream 1 step) |
+| γ per step | 0.95 | 0.95^2.5 = 0.880 |
+| Random shocks in phase 1, per step | 0.004 | 0.01 |
+| Quick schedule: phase 1, phase 2, warm-up, ε floor at | 40k, 80k, 10k, 25k | 16k, 32k, 4k, 10k |
+| Quick main window; checkpoints every | 45k–60k; 5k | 18k–24k; 2k |
+| Replay buffer (default) | 20k | 8k |
+| Target network synced every | 200 updates (8 trials) | 80 updates (8 trials) |
+
+**Checks.** Exact gap of the lit lever at full health −1.88 (version 3.3: −1.70; version 4.0: −1.77), from both
+`exact.py` and an independent simulation. A trial interval of 25 still reproduces version 3.3 exactly (training log,
+checkpoints and step recording identical byte for byte), and the tests pass at intervals of 25, 10 and 5. Not piloted
+on its own: the experiment below runs three pilot seeds at each buffer size as the positive control.
+
+### Experiment 1 with version 4.1: replay buffer ablation
+
+**Design.** As planned for version 3.3 (above), rescaled: quick schedule (phase 1 16k steps, about 160 random shocks
+for the shocked group; phase 2 32k steps), buffers of 8k, 20k and 40k steps (20k, 50k and 100k uncompressed):
+
+| Buffer | Phase-1 memories leave the buffer | |
+|---|---|---|
+| 8k | 8k steps into phase 2 (step 24k, the end of the main window) | forgotten early |
+| 20k | 20k steps into phase 2 (step 36k) | forgotten late |
+| 40k | never (the run ends at 48k) | never forgotten |
+
+Per buffer size: shocked and never-shocked groups, seeds 1–10 each, and the pilot on seeds 1–3 (positive control: its
+lit-lever share must stay low for that buffer size's result to count). 69 runs, in `runs/exp2/buf8k/`, `buf20k/`,
+`buf40k/`. **Measures** as before; main window: the 18k, 20k, 22k and 24k checkpoints (the first 8k steps of phase 2,
+the same trial time as version 3.3's 45k–60k). H1 tested at each buffer size; the buffer question as above.
+
+### Predictions (experiment 1 with version 4.1)
+
+*To be filled in by the experimenter before the runs.*
+
+- H1 at 8k / 20k / 40k:
+- Does the effect grow with buffer size:
+- Scream probe in the shocked group over phase 2, by buffer size:
+- Pilots pass at all three buffer sizes:
+
+### Results (experiment 1 with version 4.1)
+
+*Running.*
 
 ## Earlier versions of experiment 1
 

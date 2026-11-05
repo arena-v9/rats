@@ -10,7 +10,7 @@ from env import NUM_ACTIONS, OBS_SIZE, TIME_COMPRESSION, steps
 
 # A shock's health comes back as reward while it regenerates, so it costs the agent only through discounting: at
 # gamma 0.99 the lit lever's true disadvantage at full health is 0.56, at 0.95 it is 1.70 (version 3.3). Per step it is
-# 0.95 per uncompressed step, so the discount over a trial interval stays the same (0.95 ** 5 = 0.774 at k = 5).
+# 0.95 per uncompressed step, so the discount over a trial interval stays the same (0.95 ** 2.5 = 0.880 per step).
 GAMMA = 0.95 ** TIME_COMPRESSION
 LEARNING_RATE = 5e-4
 BATCH_SIZE = 128
