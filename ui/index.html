@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lever Task Viewer</title>
+<!--
+  The viewer for the lever task. Served by ui/serve.py, which builds /summary.json from runs/ on each request.
+  Training: learning curves of each run while it trains. Testing: the greedy evaluations at checkpoints, the pilot
+  check and every run's final evaluation. Hypothesis: the verdict on H1 and the statistics behind it.
+-->
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11, 11, 11, 0.10);
+  --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a;
+  --good: #0ca30c; --serious: #ec835a; --critical: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10);
+  --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1120px; margin: 0 auto; padding: 20px 16px 48px; }
+h1 { font-size: 1.35rem; margin: 0 0 2px; }
+h2 { font-size: 1.05rem; margin: 28px 0 8px; }
+p { margin: 6px 0; }
+.lede { color: var(--ink-2); margin: 0 0 14px; max-width: 760px; }
+.small { color: var(--muted); font-size: 0.8rem; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--grid); margin-bottom: 14px; }
+.tabs a { padding: 7px 12px; margin-bottom: -1px; color: var(--ink-2); text-decoration: none; border-bottom: 2px solid transparent; }
+.tabs a:hover { color: var(--ink); }
+.tabs a[aria-current="page"] { color: var(--ink); font-weight: 600; border-bottom-color: var(--ink); }
+.filters { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 0 0 14px; }
+.filters label { color: var(--ink-2); font-size: 0.85rem; display: flex; gap: 6px; align-items: center; }
+select, button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
+button { cursor: pointer; }
+.status-line { margin-left: auto; color: var(--muted); font-size: 0.8rem; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
+.card h3 { font-size: 0.9rem; margin: 0 0 2px; }
+.card .sub { color: var(--muted); font-size: 0.78rem; margin: 0 0 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 10px; color: var(--ink-2); font-size: 0.85rem; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.key { display: inline-block; width: 14px; height: 2px; border-radius: 1px; }
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; overflow: visible; }
+.chart text { font-size: 10px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.tooltip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 8px; font-size: 0.78rem; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12); white-space: nowrap; z-index: 2; display: none; }
+.tooltip .row { display: flex; align-items: center; gap: 6px; }
+.tooltip strong { font-variant-numeric: tabular-nums; }
+.tooltip .head { color: var(--muted); margin-bottom: 2px; }
+details { margin-top: 6px; }
+summary { cursor: pointer; color: var(--muted); font-size: 0.78rem; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+th, td { padding: 5px 8px; border-bottom: 1px solid var(--grid); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+th { font-weight: 600; color: var(--ink-2); }
+th:first-child, td:first-child { text-align: left; }
+td.wrap, th.wrap { white-space: normal; text-align: left; }
+.badge { display: inline-flex; align-items: center; gap: 5px; }
+.icon { font-weight: 700; }
+.verdict { display: flex; gap: 14px; align-items: flex-start; }
+.verdict .value { font-size: 1.6rem; font-weight: 600; line-height: 1.2; }
+.verdict .icon { font-size: 1.6rem; line-height: 1.2; }
+.empty { color: var(--muted); padding: 18px 0; }
+.hypothesis { border-left: 3px solid var(--ink); padding: 2px 0 2px 12px; margin: 10px 0 16px; font-size: 1rem; }
+.loading { opacity: 0.55; transition: opacity 0.2s; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Lever task, experiment 1</h1>
+  <p class="lede">Does being shocked itself make an agent avoid shocking another body? Reward is only the agent's own
+    drive reduction; the other body and the scream never enter it.</p>
+  <nav class="tabs" aria-label="Views">
+    <a href="#training" data-tab="training">Training</a>
+    <a href="#testing" data-tab="testing">Testing</a>
+    <a href="#hypothesis" data-tab="hypothesis">Hypothesis</a>
+  </nav>
+  <div class="filters" id="filters">
+    <label>Groups <select id="group-filter">
+      <option value="all">All groups</option>
+      <option value="experiment">Experiment 1 (both groups)</option>
+      <option value="shocked">Shocked</option>
+      <option value="never_shocked">Never shocked</option>
+      <option value="pilot_self_shock">Pilot (lit lever shocks itself)</option>
+    </select></label>
+    <label>Seeds <select id="seed-filter"><option value="mean">Mean of seeds</option></select></label>
+    <span class="status-line" id="status-line"></span>
+    <button id="refresh" type="button">Refresh</button>
+  </div>
+  <div id="view"></div>
+</main>
+<script>
+"use strict";
+const GROUPS = {
+  shocked: { label: "Shocked", color: "var(--series-1)" },
+  never_shocked: { label: "Never shocked", color: "var(--series-2)" },
+  pilot_self_shock: { label: "Pilot (lit lever shocks itself)", color: "var(--series-3)" },
+};
+const EXPERIMENT = ["shocked", "never_shocked"];
+const POLL_MS = 20000;
+const state = { data: null, tab: "training", group: "all", seed: "mean", error: null };
+
+// ---------- helpers ----------
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.className = v; else if (k === "style") node.style.cssText = v; else node.setAttribute(k, v);
+  }
+  for (const child of children) if (child != null) node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  return node;
+}
+function svgEl(tag, attrs = {}) {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "style") node.style.cssText = v; else node.setAttribute(k, v);
+  }
+  return node;
+}
+const fmt = {
+  pct: v => v == null ? "–" : `${(100 * v).toFixed(1)}%`,
+  num: (v, d = 3) => v == null ? "–" : (v >= 0 ? "" : "−") + Math.abs(v).toFixed(d),
+  signed: (v, d = 3) => v == null ? "–" : (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(d),
+  steps: v => v >= 1000 ? `${Math.round(v / 1000)}k` : String(v),
+  p: v => v < 0.001 ? "< 0.001" : v.toFixed(3),
+};
+const mean = xs => { const ok = xs.filter(x => x != null); return ok.length ? ok.reduce((a, b) => a + b, 0) / ok.length : null; };
+// The main measure: the lit-lever share averaged over the 120k, 140k and 160k checkpoints (the first is the end of phase 1)
+const earlyShare = run => mean(run.checkpoints.slice(1, 4).map(c => c.lit_share));
+function niceTicks(min, max, count = 4) {
+  if (min === max) { min -= 1; max += 1; }
+  const raw = (max - min) / count, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw);
+  const ticks = [];
+  for (let v = Math.ceil(min / step) * step; v <= max + step * 1e-9; v += step) ticks.push(+v.toFixed(10));
+  return ticks;
+}
+function keyFor(color) { return el("i", { class: "key", style: `background:${color}` }); }
+function statusBadge(kind, label) {
+  const icon = { good: "✓", critical: "✕", serious: "!", neutral: "…" }[kind];
+  const color = { good: "var(--good)", critical: "var(--critical)", serious: "var(--serious)", neutral: "var(--muted)" }[kind];
+  return el("span", { class: "badge" }, el("span", { class: "icon", style: `color:${color}`, "aria-hidden": "true" }, icon), label);
+}
+function table(headers, rows) {
+  const t = el("table");
+  t.append(el("thead", {}, el("tr", {}, ...headers.map(h => el("th", { class: h.wrap ? "wrap" : "" }, h.label ?? h)))));
+  const body = el("tbody");
+  for (const row of rows) body.append(el("tr", {}, ...row.map((cell, i) => el("td", { class: headers[i].wrap ? "wrap" : "" }, cell))));
+  t.append(body);
+  return el("div", { class: "table-wrap" }, t);
+}
+/** Only the groups that have runs, so the legend never names a line that isn't drawn. */
+function legend(groups) {
+  const shown = groups.filter(g => (state.data.runs[g] || []).length);
+  return el("div", { class: "legend" }, ...shown.map(g => el("span", {}, keyFor(GROUPS[g].color), GROUPS[g].label)));
+}
+
+// ---------- selection ----------
+function selectedGroups() {
+  if (state.group === "all") return Object.keys(GROUPS);
+  return state.group === "experiment" ? EXPERIMENT : [state.group];
+}
+function selectedRuns(group) {
+  const runs = state.data.runs[group] || [];
+  return state.seed === "mean" ? runs : runs.filter(r => String(r.seed) === state.seed);
+}
+/** One series per selected group: the mean over its selected runs at each step (runs still training count where they have data). */
+function seriesFor(listKey, valueKey) {
+  return selectedGroups().map(group => {
+    const runs = selectedRuns(group), bySteps = new Map();
+    for (const run of runs) for (const point of run[listKey]) {
+      if (!bySteps.has(point.step)) bySteps.set(point.step, []);
+      bySteps.get(point.step).push(point[valueKey]);
+    }
+    const points = [...bySteps.entries()].sort((a, b) => a[0] - b[0]).map(([x, vs]) => [x, mean(vs), vs.filter(v => v != null).length]);
+    return { group, name: GROUPS[group].label, color: GROUPS[group].color, points };
+  }).filter(s => s.points.length);
+}
+
+// ---------- line chart with crosshair ----------
+function lineChart({ title, sub, series, format, xDomain, yDomain, refLine, phaseLine, height = 170 }) {
+  const card = el("div", { class: "card" }, el("h3", {}, title), sub ? el("p", { class: "sub" }, sub) : null);
+  const box = el("div", { class: "chart" });
+  card.append(box);
+  if (!series.length) { box.append(el("p", { class: "empty" }, "No data yet.")); return card; }
+  const tooltip = el("div", { class: "tooltip", role: "status" });
+  box.append(tooltip);
+  requestAnimationFrame(() => draw());
+  function draw() {
+    const width = Math.max(box.clientWidth, 280), m = { l: 46, r: 14, t: 14, b: 22 };
+    const values = series.flatMap(s => s.points.map(p => p[1])).filter(v => v != null);
+    // yDomain is the least range shown; the data can widen it, so a line never leaves its plot
+    let [y0, y1] = [Math.min(...values), Math.max(...values)];
+    if (yDomain) { y0 = Math.min(y0, yDomain[0]); y1 = Math.max(y1, yDomain[1]); }
+    if (refLine != null) { y0 = Math.min(y0, refLine.y); y1 = Math.max(y1, refLine.y); }
+    const yt = niceTicks(y0, y1);
+    y0 = Math.min(y0, yt[0]); y1 = Math.max(y1, yt[yt.length - 1]);
+    const [x0, x1] = xDomain;
+    const X = x => m.l + (x - x0) / (x1 - x0) * (width - m.l - m.r);
+    const Y = y => m.t + (1 - (y - y0) / (y1 - y0 || 1)) * (height - m.t - m.b);
+    const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, height, role: "img", "aria-label": title });
+    for (const v of yt) {
+      svg.append(svgEl("line", { x1: m.l, x2: width - m.r, y1: Y(v), y2: Y(v), style: "stroke:var(--grid);stroke-width:1" }));
+      const label = svgEl("text", { x: m.l - 6, y: Y(v) + 3, "text-anchor": "end" }); label.textContent = format(v); svg.append(label);
+    }
+    for (const v of niceTicks(x0, x1, 6)) {
+      const label = svgEl("text", { x: X(v), y: height - 6, "text-anchor": "middle" }); label.textContent = fmt.steps(v); svg.append(label);
+    }
+    svg.append(svgEl("line", { x1: m.l, x2: width - m.r, y1: height - m.b, y2: height - m.b, style: "stroke:var(--axis);stroke-width:1" }));
+    if (phaseLine != null && phaseLine > x0 && phaseLine < x1) {
+      svg.append(svgEl("line", { x1: X(phaseLine), x2: X(phaseLine), y1: m.t, y2: height - m.b, style: "stroke:var(--axis);stroke-width:1" }));
+      const label = svgEl("text", { x: X(phaseLine) + 4, y: m.t - 3 }); label.textContent = "phase 2 →"; svg.append(label);
+    }
+    if (refLine != null) {
+      svg.append(svgEl("line", { x1: m.l, x2: width - m.r, y1: Y(refLine.y), y2: Y(refLine.y), style: "stroke:var(--ink-2);stroke-width:1;opacity:0.6" }));
+      const label = svgEl("text", { x: width - m.r, y: Y(refLine.y) - 4, "text-anchor": "end" }); label.textContent = refLine.label; svg.append(label);
+    }
+    for (const s of series) {
+      let d = "", pen = false;
+      for (const [x, y] of s.points) {
+        if (y == null) { pen = false; continue; }
+        d += `${pen ? "L" : "M"}${X(x).toFixed(1)},${Y(y).toFixed(1)}`; pen = true;
+      }
+      svg.append(svgEl("path", { d, style: `fill:none;stroke:${s.color};stroke-width:2;stroke-linejoin:round;stroke-linecap:round` }));
+      const last = [...s.points].reverse().find(p => p[1] != null);
+      if (last) svg.append(svgEl("circle", { cx: X(last[0]), cy: Y(last[1]), r: 4, style: `fill:${s.color};stroke:var(--surface);stroke-width:2` }));
+    }
+    const cross = svgEl("line", { y1: m.t, y2: height - m.b, style: "stroke:var(--muted);stroke-width:1;display:none" });
+    svg.append(cross);
+    const xs = [...new Set(series.flatMap(s => s.points.map(p => p[0])))].sort((a, b) => a - b);
+    const hit = svgEl("rect", { x: m.l, y: m.t, width: width - m.l - m.r, height: height - m.t - m.b, style: "fill:transparent", tabindex: 0 });
+    svg.append(hit);
+    const show = clientX => {
+      const rect = svg.getBoundingClientRect(), px = (clientX - rect.left) * width / rect.width;
+      const x = xs.reduce((best, v) => Math.abs(X(v) - px) < Math.abs(X(best) - px) ? v : best, xs[0]);
+      cross.setAttribute("x1", X(x)); cross.setAttribute("x2", X(x)); cross.style.display = "";
+      tooltip.replaceChildren(el("div", { class: "head" }, `step ${x.toLocaleString()}`));
+      for (const s of series) {
+        const p = s.points.find(q => q[0] === x);
+        const runsNote = state.seed === "mean" && p ? ` (${p[2]} run${p[2] === 1 ? "" : "s"})` : "";
+        tooltip.append(el("div", { class: "row" }, keyFor(s.color), el("strong", {}, p ? format(p[1]) : "–"), `${s.name}${runsNote}`));
+      }
+      tooltip.style.display = "block";
+      const left = X(x) * rect.width / width;
+      tooltip.style.left = `${Math.min(left + 12, rect.width - tooltip.offsetWidth)}px`;
+      tooltip.style.top = "8px";
+    };
+    hit.addEventListener("pointermove", e => show(e.clientX));
+    hit.addEventListener("pointerleave", () => { cross.style.display = "none"; tooltip.style.display = "none"; });
+    hit.addEventListener("focus", () => { const r = svg.getBoundingClientRect(); show(r.left + r.width - 1); });
+    hit.addEventListener("blur", () => { cross.style.display = "none"; tooltip.style.display = "none"; });
+    box.querySelector("svg")?.remove();
+    box.prepend(svg);
+  }
+  const rows = [...new Set(series.flatMap(s => s.points.map(p => p[0])))].sort((a, b) => a - b)
+    .map(x => [x.toLocaleString(), ...series.map(s => format(s.points.find(p => p[0] === x)?.[1] ?? null))]);
+  card.append(el("details", {}, el("summary", {}, "Table"), table(["Step", ...series.map(s => s.name)], rows)));
+  return card;
+}
+
+// ---------- strip plot: one dot per run ----------
+function stripPlot(groupsRuns, title, sub) {
+  const card = el("div", { class: "card" }, el("h3", {}, title), el("p", { class: "sub" }, sub));
+  const box = el("div", { class: "chart" });
+  const tooltip = el("div", { class: "tooltip", role: "status" });
+  box.append(tooltip);
+  card.append(box);
+  requestAnimationFrame(() => {
+    const width = Math.max(box.clientWidth, 280), height = 240, m = { l: 46, r: 14, t: 12, b: 26 };
+    const Y = v => m.t + (1 - v) * (height - m.t - m.b);
+    const band = (width - m.l - m.r) / groupsRuns.length;
+    const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, height, role: "img", "aria-label": title });
+    for (const v of [0, 0.25, 0.5, 0.75, 1]) {
+      svg.append(svgEl("line", { x1: m.l, x2: width - m.r, y1: Y(v), y2: Y(v),
+        style: v === 0.5 ? "stroke:var(--ink-2);stroke-width:1;opacity:0.6" : "stroke:var(--grid);stroke-width:1" }));
+      const label = svgEl("text", { x: m.l - 6, y: Y(v) + 3, "text-anchor": "end" }); label.textContent = `${v * 100}%`; svg.append(label);
+    }
+    const ref = svgEl("text", { x: width - m.r, y: Y(0.5) - 4, "text-anchor": "end" }); ref.textContent = "indifferent"; svg.append(ref);
+    groupsRuns.forEach(({ group, runs }, i) => {
+      const cx = m.l + band * (i + 0.5);
+      const label = svgEl("text", { x: cx, y: height - 6, "text-anchor": "middle" }); label.textContent = GROUPS[group].label; svg.append(label);
+      const shares = runs.map(earlyShare).filter(v => v != null);
+      const avg = mean(shares);
+      if (avg != null) svg.append(svgEl("line", { x1: cx - 26, x2: cx + 26, y1: Y(avg), y2: Y(avg), style: "stroke:var(--ink);stroke-width:2" }));
+      runs.forEach((run, j) => {
+        const v = earlyShare(run);
+        if (v == null) return;
+        const x = cx + ((j % 5) - 2) * 9 + (j >= 5 ? 4.5 : 0);
+        const dot = svgEl("circle", { cx: x, cy: Y(v), r: 5, tabindex: 0, style: `fill:${GROUPS[group].color};stroke:var(--surface);stroke-width:2;cursor:default` });
+        const show = () => {
+          tooltip.replaceChildren(el("div", { class: "row" }, el("strong", {}, fmt.pct(v)), `${GROUPS[group].label}, seed ${run.seed}`));
+          tooltip.style.display = "block";
+          const rect = svg.getBoundingClientRect();
+          tooltip.style.left = `${Math.min(x * rect.width / width + 10, rect.width - tooltip.offsetWidth)}px`;
+          tooltip.style.top = `${Math.max(0, Y(v) * rect.height / height - 30)}px`;
+        };
+        const hide = () => { tooltip.style.display = "none"; };
+        dot.addEventListener("pointerenter", show); dot.addEventListener("focus", show);
+        dot.addEventListener("pointerleave", hide); dot.addEventListener("blur", hide);
+        svg.append(dot);
+      });
+    });
+    box.prepend(svg);
+  });
+  return card;
+}
+
+// ---------- tabs ----------
+function trainingView() {
+  const view = el("div");
+  const groups = selectedGroups();
+  const allRuns = groups.flatMap(g => (state.data.runs[g] || []).map(r => ({ ...r, group: g })));
+  view.append(el("h2", {}, "Runs"));
+  if (!allRuns.length) { view.append(el("p", { class: "empty" }, "No runs in the selected groups yet (other groups may have some: see the Groups filter).")); return view; }
+  view.append(table(
+    ["Group", "Seed", "Status", "Phase", "Progress", "Minutes"],
+    allRuns.map(r => [
+      el("span", { class: "badge" }, keyFor(GROUPS[r.group].color), GROUPS[r.group].label), r.seed,
+      r.status === "done" ? statusBadge("good", "done") : statusBadge("neutral", "training"),
+      r.step <= r.phase1_steps ? "1: pre-exposure" : "2: lever task",
+      `${Math.round(100 * r.step / r.total_steps)}%`, (r.seconds / 60).toFixed(1),
+    ])));
+  const phase1 = allRuns[0].phase1_steps, total = allRuns[0].total_steps;
+  view.append(el("h2", {}, "Learning curves"));
+  view.append(el("p", { class: "small" }, "Each point summarizes the last 5,000 steps, exploration included. " +
+    (state.seed === "mean" ? "Lines are means over the selected seeds." : `Seed ${state.seed}.`)));
+  view.append(legend(groups));
+  const charts = el("div", { class: "grid-2" });
+  const common = { xDomain: [0, total], phaseLine: phase1 };
+  charts.append(
+    lineChart({ ...common, title: "Episode return", sub: "Sum of drive-reduction rewards per episode", series: seriesFor("training", "episode_return"), format: v => fmt.num(v, 2) }),
+    lineChart({ ...common, title: "Deaths per episode", sub: "Share of episodes ending in the agent's death", series: seriesFor("training", "death_rate"), format: fmt.pct, yDomain: [0, 0.05] }),
+    lineChart({ ...common, title: "TD loss", sub: "Mean Huber loss per gradient step", series: seriesFor("training", "loss"), format: v => fmt.num(v, 3) }),
+    lineChart({ ...common, title: "Lit-lever share in training", sub: "Presses on the lit lever ÷ all presses (the light means nothing in phase 1)", series: seriesFor("training", "lit_share"), format: fmt.pct, yDomain: [0, 1], refLine: { y: 0.5, label: "indifferent" } }),
+  );
+  view.append(charts);
+  return view;
+}
+
+function testingView() {
+  const view = el("div");
+  const groups = selectedGroups();
+  view.append(el("p", { class: "small" }, "Greedy network, no learning, on the same 256 phase-2 episodes for every run and checkpoint " +
+    "(128 with lever A lit, 128 with B lit: 1,024 trials). The first checkpoint is the end of phase 1."));
+  view.append(el("h2", {}, "Over phase 2"));
+  view.append(legend(groups));
+  const runs = groups.flatMap(g => state.data.runs[g] || []);
+  const phase1 = runs[0]?.phase1_steps ?? 100000, total = runs[0]?.total_steps ?? 300000;
+  const common = { xDomain: [phase1, total] };
+  const charts = el("div", { class: "grid-2" });
+  charts.append(
+    lineChart({ ...common, title: "Lit-lever share", sub: "Below 50%: the agent avoids the lever that shocks", series: seriesFor("checkpoints", "lit_share"), format: fmt.pct, yDomain: [0, 1], refLine: { y: 0.5, label: "indifferent" } }),
+    lineChart({ ...common, title: "Q-gap, lit − unlit", sub: "Below 0: the agent values the lit lever less, even if its choice doesn't flip", series: seriesFor("checkpoints", "q_gap"), format: v => fmt.signed(v), refLine: { y: 0, label: "no preference" } }),
+    lineChart({ ...common, title: "Scream probe", sub: "Change in value when a scream is heard. Below 0: a scream means bad news", series: seriesFor("checkpoints", "scream_probe"), format: v => fmt.signed(v), refLine: { y: 0, label: "no meaning" } }),
+  );
+  view.append(charts);
+
+  const pilot = state.data.analysis.pilot;
+  if (groups.includes("pilot_self_shock")) {
+    view.append(el("h2", {}, "Pilot check"));
+    if (!pilot) view.append(el("p", { class: "empty" }, "No finished pilot runs yet."));
+    else {
+      view.append(el("p", {}, statusBadge(pilot.passed ? "good" : "critical", pilot.passed ? "Pilot passed" : "Pilot failed"),
+        el("span", { class: "small" }, ` · each run needs a lit-lever share below ${pilot.max_lit_share * 100}% and phase-1 deaths below ${pilot.max_death_rate * 100}% of episodes`)));
+      view.append(table(["Seed", "Lit-lever share", "Phase-1 deaths (after ε reaches 0.02)", "Minutes", "Check"],
+        pilot.runs.map(r => [r.seed, fmt.pct(r.lit_share), fmt.pct(r.death_rate), r.minutes.toFixed(1),
+          r.passed ? statusBadge("good", "pass") : statusBadge("critical", "fail")])));
+    }
+  }
+
+  view.append(el("h2", {}, "Final evaluation of each run"));
+  const finished = groups.flatMap(g => selectedRuns(g).filter(r => r.status === "done").map(r => ({ ...r, group: g })));
+  if (!finished.length) { view.append(el("p", { class: "empty" }, "No finished runs yet.")); return view; }
+  view.append(table(
+    ["Group", "Seed", "Lit-lever share (120k–160k)", "Lit-lever share (final)", "Q-gap (final)", "Refusals (final)",
+     "Deaths (final)", "Scream probe (end of phase 1)", "Scream probe (final)"],
+    finished.map(r => {
+      const last = r.checkpoints.at(-1);
+      return [el("span", { class: "badge" }, keyFor(GROUPS[r.group].color), GROUPS[r.group].label), r.seed, fmt.pct(earlyShare(r)),
+        fmt.pct(last.lit_share), fmt.signed(last.q_gap), fmt.pct(last.refusal_share), last.deaths,
+        fmt.signed(r.checkpoints[0].scream_probe), fmt.signed(last.scream_probe)];
+    })));
+  return view;
+}
+
+function hypothesisView() {
+  const view = el("div");
+  view.append(el("p", { class: "hypothesis" }, "H1: an agent that has been shocked itself avoids the lever that shocks another body, " +
+    "more than an agent that has never been shocked."));
+  view.append(el("p", { class: "small" }, "Supported if the shocked group's lit-lever share early in phase 2 (mean of the 120k, 140k and 160k " +
+    "checkpoints) is clearly below the never-shocked group's " +
+    "(95% bootstrap interval of the difference excludes 0 and permutation p < 0.05), with most shocked runs below 50%."));
+  const e1 = state.data.analysis.experiment_1;
+  const done = Object.fromEntries(EXPERIMENT.map(g => [g, (state.data.runs[g] || []).filter(r => r.status === "done")]));
+  const counts = `${done.shocked.length}/10 shocked and ${done.never_shocked.length}/10 never-shocked runs finished`;
+  const verdicts = {
+    supported: ["good", "Supported", "Shocked agents avoid the lever that shocks the other body more than never-shocked agents."],
+    "not supported": ["critical", "Not supported", "No clear difference between the groups in the predicted direction."],
+    opposite: ["serious", "Opposite direction", "Shocked agents press the lit lever clearly more than never-shocked agents."],
+    pending: ["neutral", "Pending", "Not enough evidence yet; the verdict is final once all 20 runs have finished."],
+  };
+  const [kind, label, text] = verdicts[e1 ? e1.verdict.status : "pending"];
+  const icon = { good: "✓", critical: "✕", serious: "!", neutral: "…" }[kind];
+  const iconColor = { good: "var(--good)", critical: "var(--critical)", serious: "var(--serious)", neutral: "var(--muted)" }[kind];
+  view.append(el("div", { class: "card verdict" },
+    el("span", { class: "icon", style: `color:${iconColor}`, "aria-hidden": "true" }, icon),
+    el("div", {}, el("div", { class: "value" }, label), el("p", {}, text),
+      el("p", { class: "small" }, e1 ? `${counts}. ${e1.verdict.shocked_runs_below_half}/${e1.verdict.shocked_runs} shocked runs below 50%.` : `${counts}. The analysis needs at least 2 finished runs per group.`))));
+
+  view.append(el("h2", {}, "Early lit-lever share of each run (120k–160k)"));
+  view.append(stripPlot(EXPERIMENT.map(g => ({ group: g, runs: done[g] })), "Lit-lever share by run",
+    "One dot per finished run; the bar is the group mean. Below 50%: the run avoids shocking the other body."));
+  if (!e1) return view;
+
+  view.append(el("h2", {}, "Never shocked minus shocked"));
+  view.append(table(
+    [{ label: "Measure", wrap: true }, "Shocked", "Never shocked", "Difference", "95% interval", "p", "Verdict"],
+    e1.comparisons.map(c => [c.label, fmt.num(c.scale * c.a, 2), fmt.num(c.scale * c.b, 2), fmt.signed(c.scale * c.difference, 2),
+      `${fmt.signed(c.scale * c.ci95[0], 2)} to ${fmt.signed(c.scale * c.ci95[1], 2)}`, fmt.p(c.p_value),
+      c.clear ? statusBadge("good", "clear") : el("span", { class: "small" }, "not clear")])));
+  view.append(el("p", { class: "small" }, "Exact two-sided permutation p-value over every split of runs between the groups; " +
+    "bootstrap interval from 20,000 resamples. The lit-lever share is in percentage points."));
+
+  view.append(el("h2", {}, "Each group against no effect"));
+  view.append(table(
+    [{ label: "Measure", wrap: true }, "Group", "Mean − no effect", "95% interval", "p", "Runs below", "Verdict"],
+    e1.against_null.map(n => [n.label, GROUPS[n.group].label, fmt.signed(n.scale * n.difference, 2),
+      `${fmt.signed(n.scale * n.ci95[0], 2)} to ${fmt.signed(n.scale * n.ci95[1], 2)}`, fmt.p(n.p_value),
+      `${n.runs_below}/${n.runs}`, n.clear ? statusBadge("good", "clear") : el("span", { class: "small" }, "not clear")])));
+  view.append(el("p", { class: "small" }, "No effect is 50% for the lit-lever share and 0 for the Q-gap and the scream probe; sign-flip test over runs."));
+  return view;
+}
+
+// ---------- rendering & data ----------
+function syncSeedOptions() {
+  const select = document.getElementById("seed-filter");
+  const seeds = [...new Set(selectedGroups().flatMap(g => (state.data?.runs[g] || []).map(r => r.seed)))].sort((a, b) => a - b);
+  if (!seeds.map(String).includes(state.seed)) state.seed = "mean";
+  select.replaceChildren(el("option", { value: "mean" }, "Mean of seeds"), ...seeds.map(s => el("option", { value: String(s) }, `Seed ${s}`)));
+  select.value = state.seed;
+}
+function render() {
+  for (const a of document.querySelectorAll(".tabs a")) {
+    if (a.dataset.tab === state.tab) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+  }
+  document.getElementById("group-filter").closest("label").style.display = state.tab === "hypothesis" ? "none" : "";
+  document.getElementById("seed-filter").closest("label").style.display = state.tab === "hypothesis" ? "none" : "";
+  const view = document.getElementById("view");
+  if (state.error && !state.data) { view.replaceChildren(el("p", { class: "empty" }, state.error)); return; }
+  if (!state.data) { view.replaceChildren(el("p", { class: "empty" }, "Loading…")); return; }
+  syncSeedOptions();
+  view.replaceChildren({ training: trainingView, testing: testingView, hypothesis: hypothesisView }[state.tab]());
+}
+let pollTimer = null;
+async function load() {
+  const view = document.getElementById("view"), status = document.getElementById("status-line");
+  view.classList.add("loading");
+  try {
+    const response = await fetch("summary.json", { cache: "no-store" });
+    if (!response.ok) throw new Error(`summary.json: HTTP ${response.status}`);
+    state.data = await response.json();
+    state.error = null;
+  } catch (error) {
+    state.error = `Couldn't load the data (${error.message}). Is ui/serve.py running?`;
+  }
+  view.classList.remove("loading");
+  const running = state.data ? Object.values(state.data.runs).flat().filter(r => r.status !== "done").length : 0;
+  status.textContent = state.error ? state.error : `Updated ${new Date().toLocaleTimeString()}` + (running ? ` · ${running} training, refreshing every ${POLL_MS / 1000} s` : "");
+  clearTimeout(pollTimer);
+  if (running) pollTimer = setTimeout(load, POLL_MS);
+  render();
+}
+function readHash() { const tab = location.hash.slice(1); state.tab = ["training", "testing", "hypothesis"].includes(tab) ? tab : "training"; }
+window.addEventListener("hashchange", () => { readHash(); render(); });
+document.getElementById("group-filter").addEventListener("change", e => { state.group = e.target.value; render(); });
+document.getElementById("seed-filter").addEventListener("change", e => { state.seed = e.target.value; render(); });
+document.getElementById("refresh").addEventListener("click", load);
+let resizeTimer = null;
+window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(render, 150); });
+readHash();
+load();
+</script>
+</body>
+</html>
