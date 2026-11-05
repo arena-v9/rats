@@ -1,24 +1,31 @@
 """
-Serves the viewer: ui/index.html, plus /summary.json built fresh from runs/ on each request (every run so far, and the
-analysis of the finished ones). The analysis is recomputed only when the set of finished runs changes.
+Serves the viewer: ui/index.html, plus /summary.json built fresh from runs/ on each request (every run so far in one
+collection, and the analysis of the finished ones). The analysis is recomputed only when the set of finished runs
+changes. For the replay (ui/replay.html): /episodes.json?group=G&seed=S lists a run's recorded episodes,
+/episode.json?group=G&seed=S&i=N gives one episode step by step. Every request takes ?runs=<collection> (e.g.
+exp1/buf20k; empty for runs directly under runs/); /summary.json lists the collections.
 
     .venv/bin/python ui/serve.py        # then open http://localhost:8000
 """
 
 import argparse
 import json
+import threading
 import sys
 from functools import partial
+from urllib.parse import parse_qs, urlsplit
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 UI_DIR = Path(__file__).parent
 sys.path.insert(0, str(UI_DIR.parent))
 
-from analyze import analysis, finished, load_all  # noqa: E402
-from train import GROUPS  # noqa: E402
+from analyze import analysis, collections, finished, load_all  # noqa: E402
+from recording import FILE_NAME, episode, episodes, read  # noqa: E402
+from train import GROUPS, RUNS_DIR  # noqa: E402
 
 _cache: dict[str, dict] = {}
+_analysis_lock = threading.Lock()  # one analysis at a time: concurrent requests wait for it, not redo it
 
 
 def _no_nan(value):
@@ -32,21 +39,75 @@ def _no_nan(value):
     return value
 
 
-def summary() -> dict:
-    runs = load_all()
+def collection(query: dict) -> str:
+    """The collection named in the query (?runs=exp1/buf20k; empty for runs/ itself), only if it really holds runs."""
+    name = query.get("runs", [""])[0]
+    if name not in collections() and name != "":
+        raise KeyError(name)
+    return name
+
+
+def summary(query: dict) -> dict:
+    name = collection(query)
+    runs = load_all(name)
     done = finished(runs)
-    key = json.dumps({group: [run["seed"] for run in group_runs] for group, group_runs in done.items()})
-    if key not in _cache:
-        _cache.clear()
-        _cache[key] = analysis(done)
-    return {"groups": GROUPS, "runs": runs, "analysis": _cache[key]}
+    key = json.dumps([name, {group: [run["seed"] for run in group_runs] for group, group_runs in done.items()}])
+    with _analysis_lock:
+        if key not in _cache:
+            if len(_cache) > 20:
+                _cache.clear()
+            _cache[key] = analysis(done)
+    return {"groups": GROUPS, "collection": name, "collections": collections(), "runs": runs, "analysis": _cache[key]}
+
+
+_recordings: dict[Path, tuple] = {}  # path -> (file size, records, episode list), reread when the file grows
+
+
+def recording(query: dict) -> tuple:
+    """The recording of the run named in the query, or a KeyError/ValueError for a bad or missing one."""
+    group, seed = query["group"][0], int(query["seed"][0])
+    if group not in GROUPS:
+        raise KeyError(group)
+    path = RUNS_DIR / collection(query) / group / f"seed_{seed}" / FILE_NAME
+    size = path.stat().st_size
+    if path not in _recordings or _recordings[path][0] != size:
+        steps = read(path)
+        metrics = json.loads((path.parent / "metrics.json").read_text())
+        lengths = {"phase1_steps": metrics["phase1_steps"],  # depends on the schedule and the time compression
+                   "episode_steps": metrics.get("episode_steps", 100)}  # 100 before time was compressed
+        _recordings[path] = (size, steps, episodes(steps, lengths["phase1_steps"]), lengths)
+    return _recordings[path]
+
+
+def episode_list(query: dict) -> dict:
+    _, steps, listing, lengths = recording(query)
+    return {**lengths, "steps": len(steps), **listing}
+
+
+def one_episode(query: dict) -> dict:
+    _, steps, listing, _ = recording(query)
+    i = int(query["i"][0])
+    if not 0 <= i < listing["count"]:
+        raise KeyError(i)
+    start = listing["start"][i]
+    return {"i": i, "start": start, **episode(steps, start, listing["length"][i])}
+
+
+ROUTES = {"/summary.json": lambda query: _no_nan(summary(query)), "/episodes.json": episode_list,
+          "/episode.json": one_episode}
 
 
 class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
-        if self.path.split("?")[0] != "/summary.json":
+        url = urlsplit(self.path)
+        if url.path not in ROUTES:
             return super().do_GET()
-        body = json.dumps(_no_nan(summary()), allow_nan=False).encode()
+        try:
+            content = ROUTES[url.path](parse_qs(url.query))
+        except (KeyError, ValueError, FileNotFoundError):
+            self.send_error(404, "No such run, recording or episode")
+            return
+        body = json.dumps(content, allow_nan=False).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")

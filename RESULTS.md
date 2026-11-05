@@ -77,7 +77,364 @@ also shocked a neighbour, more so after their own pain experience.
 
 ### Results (version 3)
 
-*Not run yet.*
+**Pilot: passed, but only on the final checkpoint.** With the lit lever shocking the agent itself, the final networks
+pressed it on 17.2%, 0.0% and 0.0% of presses; phase-1 deaths after ε reached 0.02 were 1.8%, 3.1% and 2.4% of
+episodes. Avoidance was learned within about 20k phase-2 steps and then broke down for stretches: seed 1 was at 32.8%
+at 180k and rose again to 17.2% at 300k; seed 2 was at 25.0% at 180k; seed 3 was at 25–38% from 160k to 280k. The pass
+depends on where the oscillation happened to be at 300k. A run took about 20 minutes on CPU, three at once. (Run twice:
+the second run, with the step recording and the diagnostics below, reproduced every checkpoint exactly.)
+
+**Why avoidance breaks down** (from the step recording and the buffer and probe diagnostics):
+
+- Not exploration: exploratory lit presses stayed at 0–5 per 5k steps and did not rise before a breakdown; the presses
+  during one were greedy (seed 1, 175–180k: 39 of 42).
+- Not a lack of shocked examples: shocked lit presses in the replay buffer rose through phase 2 (about 100 → 300). Nor
+  the safe lit presses left from phase 1: avoidance was best while they still filled the buffer.
+- Each breakdown hit one lit condition only: the agent pressed one lever whichever lamp was lit (a lever bias). Seeds 1
+  and 2 at 180k and seed 3 from 160k to 280k pressed B when B was lit; seed 1 at 280–300k pressed A when A was lit.
+  Seed 2 at 180k pressed lit B on exactly the trials at steps 12 and 62: hence its 25.0%.
+- The Q-gap that decides the choice was small (0.1–0.4) next to swings of ±5 in all three Q-values together over
+  20–30k steps, and the values of A-lit and B-lit states differed by up to 7 although the task is symmetric. The step
+  of the press itself paid +2.9 on average (the pellet outweighs the first 0.2 of shock); the cost comes in the next
+  two steps.
+
+### Version 3.1: one input per lamp
+
+**Change from version 3.** The lit lever is two inputs, `lit_A` and `lit_B` (exactly one is 1), instead of one
+`lit_lever` input (0 = A, 1 = B). Observation: 6 inputs; network 6→64→64→3. Nothing else changes.
+
+**Why.** With a 0/1 input, A-lit states are the network's baseline (the input contributes nothing) and B-lit states
+are the baseline plus a correction that only B-lit samples train, so the two conditions learn asymmetrically. One input
+per lamp makes them symmetric. Both encodings can represent the same functions; only how training distributes its
+updates changes. It is a test of whether the encoding contributes to the lever bias: the late seed-1 breakdown on lever
+A means it is not the whole story, and the small Q-gap next to the drift may matter more.
+
+**Plan.** Pilot only, seeds 1–3, compared with the version-3 pilot: do breakdowns still happen, and on which lever?
+
+### Predictions (version 3.1)
+
+*To be filled in by the experimenter before the runs.*
+
+- Breakdowns (lit-lever share above 20% at any phase-2 checkpoint after 120k):
+- Lever of the breakdowns (A, B or both):
+- Pilot pass (final lit-lever share below 20% on all seeds):
+
+### Results (version 3.1)
+
+**Pilot: passed, but only on the final checkpoint again.** Final lit-lever shares 0.0%, 0.0% and 5.7%; phase-1 deaths
+1.8%, 3.1% and 2.4%. Breakdowns (above 20% after 120k) on 5 of 30 checkpoints, against 8 of 30 in version 3: seed 2 at
+280k (43%), seed 3 at 160k, 180k, 240k and 280k (67%, both lamps). They now fall on either lever, so the encoding
+asymmetry is gone, but the breakdowns are not. Runs deleted on 5 November (after these results were recorded).
+
+**Why: the loss was biased.** Phase 2 of the pilot is deterministic, so the true Q-values can be computed exactly by
+simulation; phase 1's by Monte Carlo. Compared with them, the networks were wrong in three ways:
+
+- Every value about 7 too low at the end of phase 1 (−6.5 to −7.4 on all three seeds), wearing off only over 40–60k
+  phase-2 steps.
+- The lever gap 5–20 times too small during the main window: learned −0.02 to −0.15, true −0.6 to −2.3 (at full
+  health the true gap is −0.56).
+- Death barely felt: at health 0.5 a shock kills and the true gap is −15 to −19; seed 3 reached low health and kept
+  pressing the lit lever, with a learned gap of −0.8 where the true one averaged −7.3.
+
+Phase 1 alone, seed 1, one change at a time: without the death store the error was unchanged (−7.37 vs −7.36); with
+mean squared error instead of the Huber loss it was +0.23. The Huber loss (threshold 1) acts like absolute error when
+TD errors exceed 1, which here they mostly do (rewards are scaled ×10), so it fits the median of the targets instead of
+their mean. The rewards are mostly small losses with occasional large gains, so the median lies below the mean; large
+rare errors (the shock's cost, death) count no more than an error of 1. Versions 1–3.1 all used this loss.
+
+### Version 3.2: mean squared error instead of the Huber loss
+
+**Change from version 3.1.** The DQN loss is mean squared error instead of the Huber loss (`smooth_l1_loss`). The
+gradient-norm clip (10) stays, guarding against spikes from death transitions. Nothing else changes.
+
+**Why.** See above: the Huber loss biased every value and shrank the differences that decide the choice.
+
+**Plan.** Pilot, seeds 1–5 (it costs the same time as three on this machine, and three cannot tell "sometimes breaks
+down" from "reliable"), compared with versions 3 and 3.1 on breakdowns and against the exact values.
+
+### Predictions (version 3.2)
+
+*To be filled in by the experimenter before the runs.*
+
+- Breakdowns (lit-lever share above 20% at any phase-2 checkpoint after 120k):
+- Learned values vs exact values at the end of phase 1:
+- Pilot pass (final lit-lever share below 20% on all seeds):
+
+### Results (version 3.2)
+
+**Stopped at 260–265k of 300k (enough to read): better, still not reliable.** Breakdowns (above 20%) on 5 of 40
+checkpoints from 120k to 260k, against 3 of 24 in version 3.1, and smaller (at most 23%, against 39%). But many
+checkpoints sat at 10–20%, and seed 4 broke down at 120–140k, in the main measure's window. The loss fix alone is not
+enough. Runs deleted on 5 November (after these results were recorded).
+
+### Version 3.3: γ 0.95, a 20k replay buffer, no store of deaths
+
+**Changes from version 3.2.** Three at once (to get a reliable pilot; version 3.2 isolates the loss):
+
+- γ 0.99 → 0.95. A shock's health comes back as reward while it regenerates, so a shock costs the agent only through
+  discounting, and at γ 0.99 there is little of it over the ~60 steps of recovery. True disadvantage of the lit lever
+  (exact, energy 0.5), at health 1.0 / 0.8 / 0.6: γ 0.99: −0.56 / −1.30 / −2.33; γ 0.95: −1.70 / −3.50 / −5.61.
+  Horizon about 20 steps instead of 100.
+- Replay buffer 100k → 20k transitions. With 100k, phase-1 transitions (in which the lit lever is safe, in states
+  that look the same) stayed in the buffer until step 200k; with 20k they are gone by step 120k, when the main
+  measure starts. 20k is also the length of the random warm-up.
+- No store of deaths (it gave deaths 5% of each batch, about 250 times their frequency). Sampling death that often
+  overweights it wherever it depends on chance (phase 1: random shocks at low health) and biases values down. Under
+  the Huber loss its effect was capped; under mean squared error it would not be.
+
+**Risk.** With a small buffer and no store, deaths can leave the buffer entirely and be forgotten. Check: phase-2
+deaths in training and evaluation, and the learned gap at low health against the exact one.
+
+**Plan.** Pilot, seeds 1–5, on the new quick schedule (40k + 80k steps: warm-up 10k, ε at its floor by 25k,
+checkpoints every 5k, log points every 1k), to iterate faster. The experiment's measures stay defined on the full
+schedule; `analyze.py` leaves quick runs out of experiment 1. Training now also logs, at every log point: gradient
+norms and how often clipping acts, TD errors by kind of transition (lit press, unlit press, rest on a trial, scream,
+death, other), how far the online network drifts from the target network, weight norms, the buffer's contents
+(deaths, phase-1 share), and, in phase 2, the probe grid against the exact Q-values (`exact.py`); each checkpoint
+compares the learned Q-gap on visited trial states with the exact one.
+
+### Predictions (version 3.3)
+
+*To be filled in by the experimenter before the runs.*
+
+- Breakdowns (lit-lever share above 20% at any phase-2 checkpoint after 120k):
+- Deaths in phase 2 (forgetting):
+- Pilot pass (final lit-lever share below 20% on all seeds):
+
+### Results (version 3.3)
+
+**Pilot: passed, and reliably this time** (quick schedule, 5 seeds). No breakdowns: 0 of 80 phase-2 checkpoints above
+20% (highest 7%, at 55k on seed 4); final lit-lever share 0.0% on every seed. The learned Q-gap on visited trial states
+came within 0.3 of the exact gap (−1.70) by 60–70k and stayed there (final −1.50 to −1.74), with the right sign on
+100% of trial states. Phase-1 deaths after ε reached its floor: 2.0%, 0.7%, 3.9%, 2.6%, 2.0% of episodes. Gradient
+clipping never acted (0% of updates). About 8 minutes per run, five at once. Runs deleted on 5 November (after these results were recorded).
+
+**One weakness: death is forgotten.** Without the store of deaths, deaths left the 20k buffer by about 70k, after
+which the TD errors on death transitions could no longer be measured and the probe grid showed the gap at low health
+(where a shock kills) about 5 smaller than the exact one, though with the right sign. Harmless here, since the agent no
+longer reaches low health in phase 2; buffer size governs it, so the buffer ablation measures it too.
+
+### Experiment 1 with version 3.3: replay buffer ablation
+
+**Why buffer size.** The replay buffer is the agent's only memory of individual experiences: while the shocked
+group's own shocks from phase 1 are still in it, every batch keeps retraining "scream → my health drops". In phase 2
+the shocked group is never shocked, and the other's screams are never followed by harm to the agent, so as soon as
+those memories leave the buffer, what phase 1 taught survives only in the network's weights, and the harmless screams
+extinguish it. Buffer size therefore sets how long the agent rehearses its own pain, and any effect on the lit lever
+may depend on it.
+
+**Design.** Quick schedule (phase 1 40k steps, about 160 random shocks for the shocked group; phase 2 80k), three
+buffer sizes. On this schedule they mean:
+
+| Buffer | Phase-1 memories leave the buffer | |
+|---|---|---|
+| 20k | 20k steps into phase 2 (step 60k, the end of the main window) | forgotten early |
+| 50k | 50k steps into phase 2 (step 90k) | forgotten late |
+| 100k | never (the run ends at 120k) | never forgotten |
+
+Per buffer size: shocked and never-shocked groups, seeds 1–10 each, plus the pilot (lit lever shocks the agent) on
+seeds 1–3 as the positive control at that buffer size. 69 runs, eight at a time. Runs in `runs_archive/exp1_uncompressed/buf20k/`,
+`buf50k/`, `buf100k/`.
+
+**Measures.** As in version 3, per buffer size, with the main window redefined for the quick schedule: **the mean of
+the 45k, 50k, 55k and 60k checkpoints** (the first 20k steps of phase 2, the period in which the pilot learned
+avoidance). H1 is tested separately at each buffer size, with the same criterion as before (shocked group's lit-lever
+share clearly below the never-shocked group's, most shocked runs below 50%). The buffer question: does the
+never-shocked minus shocked difference grow with buffer size, and does the scream probe in the shocked group stay
+negative for longer with a larger buffer? Each pilot must pass for its buffer size's result to count.
+
+### Predictions (experiment 1, buffer ablation)
+
+*To be filled in by the experimenter before the runs.*
+
+- H1 at 20k / 50k / 100k:
+- Does the effect grow with buffer size:
+- Scream probe in the shocked group over phase 2, by buffer size:
+- Pilots pass at all three buffer sizes:
+
+### Results (experiment 1, buffer ablation)
+
+**Stopped after the 20k buffer** to compress time first (version 4): the 20k-buffer runs are complete (10 shocked, 10
+never shocked, 3 pilots, in `runs_archive/exp1_uncompressed/buf20k/`); one 50k run finished; the rest never started. Not analysed yet. Runs
+from the first batch record commit `b31c147`, later ones `4db54b9` or `e7c792f`: the training code is the same in all
+three (only the analysis and the viewer changed).
+
+### Version 4: compressed time
+
+**Change from version 3.3.** One step is now five steps of version 3.3 (`TIME_COMPRESSION` in `env.py`). Up to
+version 3.3 there were 24 passive steps between trials, so 96% of transitions, and of training, were steps on which
+the agent's action did nothing. Everything defined per step is rescaled together, so the task is the same per trial:
+
+| | Version 3.3 | Version 4 |
+|---|---|---|
+| Steps between trials; episode | 25; 100 (trials at 12, 37, 62, 87) | 5; 20 (trials at 2, 7, 12, 17) |
+| Hunger, regeneration, starvation per step | 0.02, 0.01, 0.05 | 0.1, 0.05, 0.25 |
+| Shock | 3 steps × 0.2 (scream 3 steps) | 1 step × 0.6 (scream 1 step) |
+| γ per step | 0.95 | 0.95⁵ = 0.774 (same per trial interval) |
+| Random shocks in phase 1, per step | 0.004 | 0.02 (0.1 per trial interval, both) |
+| Quick schedule: phase 1, phase 2, warm-up, ε floor at | 40k, 80k, 10k, 25k | 8k, 16k, 2k, 5k |
+| Quick main window; checkpoints every | 45k–60k; 5k | 9k–12k; 1k |
+| Replay buffer | 20k | 4k (same 800 trials) |
+| Target network synced every | 200 updates (8 trials) | 8 trials of updates |
+| Other's meals; pellet | every 25 steps; 0.5 | every 5 steps; 0.5 |
+
+**Checks.** The exact Q-values the agent has to learn stay close: gap of the lit lever at full health −1.77 (version
+3.3: −1.70), and Q(unlit), Q(rest) within about 0.5. One difference: a one-step shock kills at health 0.60 or below,
+the three-step one at 0.57 or below (the body regenerated 0.03 during it). With `TIME_COMPRESSION = 1` the code
+reproduces version 3.3 exactly (training log, checkpoints and the step recording identical, byte for byte), and the
+tests pass at both values. Not rescaling the shock (3 steps × 0.2 at k = 5) would halve the gap (−0.86).
+
+**Ablation: updates per step.** With one update per environment step, training does 5 updates per trial instead of 25.
+Pilot, quick schedule, seeds 1–5, with 1 and with 5 updates per step (5 = the updates per trial of version 3.3; the
+target network syncs after the same number of trials either way). If 1 matches version 3.3's pilot, it is the default
+(about 5 times less compute per run).
+
+### Predictions (version 4)
+
+*To be filled in by the experimenter before the runs.*
+
+- Pilot with 1 update per step (reliable avoidance? learned gap vs exact):
+- Pilot with 5 updates per step:
+
+### Results (version 4)
+
+**Pilot: reliable at both settings** (quick schedule, 5 seeds each; runs in `runs_archive/v4_updates1/` and `runs_archive/v4_updates5/`):
+
+| | Version 3.3 | Version 4, 1 update/step | Version 4, 5 updates/step |
+|---|---|---|---|
+| Minutes per run | 8.1 | 2.3 | 8.2 |
+| Checkpoints above 20% lit-lever share | 0 / 80 | 0 / 80 | 0 / 80 (highest exactly 20%, first checkpoint) |
+| Final lit-lever share | 0% on every seed | 0% on every seed | 0% on every seed |
+| Learned − exact Q-gap, second half of phase 2 | about ±0.2 | −0.3 to −0.6 | about ±0.1 |
+| Phase-2 deaths | 19 / 4,001 episodes | 41 / 4,009 | 14 / 4,003 |
+| Phase-1 deaths after ε reached its floor | 2.2% | 2.5% | 2.6% |
+
+- Time compression keeps the pilot as reliable as version 3.3.
+- With one update per step (5 per trial instead of 25), avoidance holds but the values are less accurate: the network
+  rates the lit lever about 0.5 worse than it is, and dies three times as often in phase 2. With five updates per step
+  (version 3.3's updates per trial) the values match the exact ones and deaths fall to 14. Both have the same one-step
+  shock, so the extra deaths come from training less, not from the shock killing at 0.60 instead of 0.57.
+- Compression's speed-up comes only from training less per trial: at five updates per step a run costs the same as
+  in version 3.3.
+- Also run: 2 updates per step (5 seeds, `runs_archive/v4_updates2/`, not analysed) and 3 (stopped part-way when version 4.1
+  was chosen).
+
+### Version 4.1: 10 steps per trial, one update per step
+
+**Change from version 4.** Decision by the experimenter: keep one gradient update per step, and compress less, so
+that a trial gets 10 updates instead of 5 (version 3.3: 25). Trials are 10 steps apart instead of 5 (`TRIAL_INTERVAL`
+in `env.py`; compression 2.5). Everything is rescaled by the same rule as in version 4:
+
+| | Version 3.3 | Version 4.1 |
+|---|---|---|
+| Steps between trials; episode | 25; 100 (trials at 12, 37, 62, 87) | 10; 40 (trials at 5, 15, 25, 35) |
+| Hunger, regeneration, starvation per step | 0.02, 0.01, 0.05 | 0.05, 0.025, 0.125 |
+| Shock | 3 steps × 0.2 | 2 steps × 0.3, harm and scream on both (first run: 1 step × 0.6, see below) |
+| γ per step | 0.95 | 0.95^2.5 = 0.880 |
+| Random shocks in phase 1, per step | 0.004 | 0.01 |
+| Quick schedule: phase 1, phase 2, warm-up, ε floor at | 40k, 80k, 10k, 25k | 16k, 32k, 4k, 10k |
+| Quick main window; checkpoints every | 45k–60k; 5k | 18k–24k; 2k |
+| Replay buffer (default) | 20k | 8k |
+| Target network synced every | 200 updates (8 trials) | 80 updates (8 trials) |
+
+**Checks.** Exact gap of the lit lever, at health 1.0 / 0.8 / 0.7 / 0.6: −1.57 / −3.33 / −4.35 / −5.41 (version 3.3:
+−1.70 / −3.50 / −4.54 / −5.61); a shock kills at health 0.575 or below (version 3.3: 0.57). A trial interval of 25
+still reproduces version 3.3 exactly (training log, checkpoints and step recording identical byte for byte), and the
+tests pass at intervals of 25 and 10 (5 is no longer supported: a two-step shock there is 40% of the interval and the
+gap shrinks to −1.23). Not piloted on its own: the experiment below runs three pilot seeds at each buffer size as the
+positive control.
+
+**First run, with a one-step shock: the scream lost its meaning.** Version 4.1 first compressed the shock to one step
+of 0.6, as version 4.0 had. The 8k-buffer condition finished (5 shocked, 5 never shocked, 3 pilots): the pilots passed
+(highest lit-lever share 6%, final 0% on all three), but the manipulation check failed: the scream probe in the
+shocked group at the end of phase 1 was **+0.61** (positive on all 5 seeds; version 3: about −1.8). With the whole
+harm on one step, by the time the agent hears its scream the loss is already in its health and nothing worse follows,
+only recovery, which pays reward as health regenerates; so at a given health, a scream marks a shock that is over
+(rather than, say, starvation) and is good news. An experiment in which the scream does not mean pain cannot test
+H1. (H1 at 8k was not supported, lit-lever share 52.9% shocked vs 59.2% never shocked, p = 0.52, but that is moot.)
+The 20k and 40k runs were stopped. All kept in `runs_archive/exp1_one_step_shock/`.
+
+**Fix: the shock lasts two steps, 0.3 of harm and a scream on each.** On the first, harm is still to come, so the
+scream predicts pain. Check (phase 1 of the shocked group, quick schedule, seeds 1–3): scream probe at the end of
+phase 1 **−1.94, −2.65, −2.92**.
+
+### Experiment 1 with version 4.1: replay buffer ablation
+
+**Design.** As planned for version 3.3 (above), rescaled: quick schedule (phase 1 16k steps, about 160 random shocks
+for the shocked group; phase 2 32k steps), buffers of 8k, 20k and 40k steps (20k, 50k and 100k uncompressed):
+
+| Buffer | Phase-1 memories leave the buffer | |
+|---|---|---|
+| 8k | 8k steps into phase 2 (step 24k, the end of the main window) | forgotten early |
+| 20k | 20k steps into phase 2 (step 36k) | forgotten late |
+| 40k | never (the run ends at 48k) | never forgotten |
+
+Per buffer size: shocked and never-shocked groups, seeds 1–5 each, and the pilot on seeds 1–3 (positive control: its
+lit-lever share must stay low for that buffer size's result to count). 39 runs, in `runs/exp1/buf8k/`, `buf20k/`,
+`buf40k/`. (Planned with seeds 1–10; cut to 1–5 for faster results while the 8k buffer was running, before any
+result was looked at. 5 vs 5 runs is the fewest for which the permutation test can reach p < 0.05: smallest possible
+p = 2/252 ≈ 0.008; with 3 vs 3 it would be 0.10. The 8k-buffer seeds 6–10 already trained or started (one-step shock) are set
+aside in `runs_archive/exp1_extra_seeds/`.) **Measures** as before; main window: the 18k, 20k, 22k and 24k checkpoints (the first 8k steps of phase 2,
+the same trial time as version 3.3's 45k–60k). H1 tested at each buffer size; the buffer question as above.
+
+### Predictions (experiment 1 with version 4.1)
+
+*To be filled in by the experimenter before the runs.*
+
+- H1 at 8k / 20k / 40k:
+- Does the effect grow with buffer size:
+- Scream probe in the shocked group over phase 2, by buffer size:
+- Pilots pass at all three buffer sizes:
+
+### Results (experiment 1 with version 4.1)
+
+*The predictions above were not filled in before the runs.* 39 runs (seeds 1–5 per group, 3 pilots per buffer
+size), commit `79cce02`, quick schedule, 10 steps per trial, one update per step, two-step shock.
+
+**Pilots passed at every buffer size** (lit-lever share at most 16%, 0% at the end on all 9 runs). **Manipulation
+check passed:** at the end of phase 1 the scream lowered the shocked agents' value (scream probe −2.49 at 8k, −2.42 at
+20k and 40k; all 15 runs negative), and did nothing in never-shocked agents (−0.00 to −0.03). In phase 2 the agent
+itself was never shocked (0 times in all 30 runs); the other was shocked 36,446 times.
+
+**H1: supported at 20k and 40k, not at 8k.** Lit-lever share, mean of the main window (18k–24k):
+
+| Buffer | Shocked | Never shocked | Never − shocked [95% CI] | p | Shocked runs below 50% |
+|---|---|---|---|---|---|
+| 8k | 37.1% | 50.3% | +13.2 [−3.5, +33.3] | 0.29 | 3/5 |
+| 20k | 18.0% | 51.2% | +33.2 [+19.9, +45.1] | 0.016 | 5/5 |
+| 40k | 15.0% | 51.7% | +36.7 [+24.0, +46.9] | 0.008 | 5/5 |
+
+The Q-gap tells the same story (lit − unlit in the main window: −0.07 in shocked agents at 20k and 40k, about 0 in
+never-shocked ones; p = 0.008 for both). The true gap is 0 here: the lit lever costs the agent nothing in phase 2.
+Never-shocked agents are indifferent (around 50%) throughout, as they should be. The only thing that distinguishes the
+lit lever for the agent is the scream it causes (the other's health is not observed), so the avoidance is the scream's
+learned meaning at work.
+
+**The avoidance fades, and the buffer sets how fast.** Lit-lever share of the shocked group by checkpoint (%):
+
+| Buffer | 18k | 20k | 22k | 24k | 28k | 32k | 36k | 40k | 44k | 48k |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 8k | 33 | 39 | 39 | 37 | 44 | 52 | 39 | 37 | 46 | 37 |
+| 20k | 11 | 13 | 26 | 23 | 21 | 43 | 59 | 56 | 40 | 38 |
+| 40k | 11 | 13 | 15 | 22 | 30 | 34 | 26 | 35 | 46 | 35 |
+
+The scream probe of the shocked group decays toward the never-shocked level (about −0.1 to −0.2) at a rate set by the
+buffer: at 24k −0.34 (8k), −0.91 (20k), −0.96 (40k); at 36k −0.20, −0.31, −0.71; at 48k −0.05, −0.14, −0.50. At 20k the
+avoidance ends between 32k and 36k, as the phase-1 shocks leave the buffer (by 36k); at 40k, where they never leave,
+avoidance and the scream's meaning last longest. At the final checkpoint no difference between the groups is clear at
+any buffer size. This is extinction: in phase 2 a scream is never followed by harm to the agent, so TD learning
+removes its meaning, and the faster the more of the agent's replayed experience says so.
+
+**Caveats.**
+
+- Five runs per group. 20k and 40k give the smallest p-values possible with 5 vs 5 runs (0.008) or close to it; with
+  three buffer sizes tested, a Bonferroni correction gives 0.048 and 0.024, still below 0.05.
+- 20k and 40k are not independent evidence in the main window: with the same seeds, their runs are identical until
+  the 20k buffer first fills (step 20k), so the 18k and 20k checkpoints are shared and only 22k and 24k differ. The
+  difference between them shows later (28k–44k).
+- The main window and buffer sizes were chosen before the runs; the seeds were cut from 10 to 5 per group before any
+  result was seen. The first attempt at this experiment (one-step shock) is reported above and failed its
+  manipulation check.
 
 ## Earlier versions of experiment 1
 

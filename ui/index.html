@@ -48,6 +48,7 @@ p { margin: 6px 0; }
 select, button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
 button { cursor: pointer; }
 .status-line { margin-left: auto; color: var(--muted); font-size: 0.8rem; }
+.run-info { margin: -6px 0 12px; color: var(--ink-2); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
 .card h3 { font-size: 0.9rem; margin: 0 0 2px; }
@@ -90,6 +91,7 @@ td.wrap, th.wrap { white-space: normal; text-align: left; }
     <a href="#training" data-tab="training">Training</a>
     <a href="#testing" data-tab="testing">Testing</a>
     <a href="#hypothesis" data-tab="hypothesis">Hypothesis</a>
+    <a href="replay.html">Replay</a>
   </nav>
   <div class="filters" id="filters">
     <label>Groups <select id="group-filter">
@@ -100,9 +102,11 @@ td.wrap, th.wrap { white-space: normal; text-align: left; }
       <option value="pilot_self_shock">Pilot (lit lever shocks itself)</option>
     </select></label>
     <label>Seeds <select id="seed-filter"><option value="mean">Mean of seeds</option></select></label>
+    <label>Runs <select id="collection"></select></label>
     <span class="status-line" id="status-line"></span>
     <button id="refresh" type="button">Refresh</button>
   </div>
+  <p class="run-info" id="run-info"></p>
   <div id="view"></div>
 </main>
 <script>
@@ -114,7 +118,8 @@ const GROUPS = {
 };
 const EXPERIMENT = ["shocked", "never_shocked"];
 const POLL_MS = 20000;
-const state = { data: null, tab: "training", group: "all", seed: "mean", error: null };
+const state = { data: null, tab: "training", group: "all", seed: "mean", error: null,
+  collection: new URLSearchParams(location.search).get("runs") ?? null };  // null: the first collection
 
 // ---------- helpers ----------
 function el(tag, attrs = {}, ...children) {
@@ -140,8 +145,11 @@ const fmt = {
   p: v => v < 0.001 ? "< 0.001" : v.toFixed(3),
 };
 const mean = xs => { const ok = xs.filter(x => x != null); return ok.length ? ok.reduce((a, b) => a + b, 0) / ok.length : null; };
-// The main measure: the lit-lever share averaged over the 120k, 140k and 160k checkpoints (the first is the end of phase 1)
-const earlyShare = run => mean(run.checkpoints.slice(1, 4).map(c => c.lit_share));
+// The main measure: the lit-lever share averaged over the run's main window (full schedule: 120k, 140k and 160k; quick:
+// 45k to 60k). Runs from before schedules existed used the full schedule.
+const mainWindow = run => run.main_window ?? [120000, 160000];
+const earlyShare = run => mean(run.checkpoints.filter(c => c.step >= mainWindow(run)[0] && c.step <= mainWindow(run)[1]).map(c => c.lit_share));
+const windowLabel = runs => { const w = runs.length ? mainWindow(runs[0]) : [120000, 160000]; return `${fmt.steps(w[0])}–${fmt.steps(w[1])}`; };
 function niceTicks(min, max, count = 4) {
   if (min === max) { min -= 1; max += 1; }
   const raw = (max - min) / count, mag = 10 ** Math.floor(Math.log10(raw));
@@ -387,7 +395,7 @@ function testingView() {
   const finished = groups.flatMap(g => selectedRuns(g).filter(r => r.status === "done").map(r => ({ ...r, group: g })));
   if (!finished.length) { view.append(el("p", { class: "empty" }, "No finished runs yet.")); return view; }
   view.append(table(
-    ["Group", "Seed", "Lit-lever share (120k–160k)", "Lit-lever share (final)", "Q-gap (final)", "Refusals (final)",
+    ["Group", "Seed", `Lit-lever share (${windowLabel(Object.values(state.data.runs).flat())})`, "Lit-lever share (final)", "Q-gap (final)", "Refusals (final)",
      "Deaths (final)", "Scream probe (end of phase 1)", "Scream probe (final)"],
     finished.map(r => {
       const last = r.checkpoints.at(-1);
@@ -402,8 +410,8 @@ function hypothesisView() {
   const view = el("div");
   view.append(el("p", { class: "hypothesis" }, "H1: an agent that has been shocked itself avoids the lever that shocks another body, " +
     "more than an agent that has never been shocked."));
-  view.append(el("p", { class: "small" }, "Supported if the shocked group's lit-lever share early in phase 2 (mean of the 120k, 140k and 160k " +
-    "checkpoints) is clearly below the never-shocked group's " +
+  view.append(el("p", { class: "small" }, `Supported if the shocked group's lit-lever share early in phase 2 (mean over the main window, ${windowLabel(Object.values(state.data.runs).flat())}) ` +
+    "is clearly below the never-shocked group's " +
     "(95% bootstrap interval of the difference excludes 0 and permutation p < 0.05), with most shocked runs below 50%."));
   const e1 = state.data.analysis.experiment_1;
   const done = Object.fromEntries(EXPERIMENT.map(g => [g, (state.data.runs[g] || []).filter(r => r.status === "done")]));
@@ -422,7 +430,7 @@ function hypothesisView() {
     el("div", {}, el("div", { class: "value" }, label), el("p", {}, text),
       el("p", { class: "small" }, e1 ? `${counts}. ${e1.verdict.shocked_runs_below_half}/${e1.verdict.shocked_runs} shocked runs below 50%.` : `${counts}. The analysis needs at least 2 finished runs per group.`))));
 
-  view.append(el("h2", {}, "Early lit-lever share of each run (120k–160k)"));
+  view.append(el("h2", {}, `Early lit-lever share of each run (${windowLabel(Object.values(state.data.runs).flat())})`));
   view.append(stripPlot(EXPERIMENT.map(g => ({ group: g, runs: done[g] })), "Lit-lever share by run",
     "One dot per finished run; the bar is the group mean. Below 50%: the run avoids shocking the other body."));
   if (!e1) return view;
@@ -464,6 +472,7 @@ function render() {
   if (state.error && !state.data) { view.replaceChildren(el("p", { class: "empty" }, state.error)); return; }
   if (!state.data) { view.replaceChildren(el("p", { class: "empty" }, "Loading…")); return; }
   syncSeedOptions();
+  syncCollections();
   view.replaceChildren({ training: trainingView, testing: testingView, hypothesis: hypothesisView }[state.tab]());
 }
 let pollTimer = null;
@@ -471,7 +480,14 @@ async function load() {
   const view = document.getElementById("view"), status = document.getElementById("status-line");
   view.classList.add("loading");
   try {
-    const response = await fetch("summary.json", { cache: "no-store" });
+    const query = state.collection === null ? "" : `?runs=${encodeURIComponent(state.collection)}`;
+    let response = await fetch(`summary.json${query}`, { cache: "no-store" });
+    if (response.ok && state.collection === null) {  // first load: show the newest collection that has runs
+      const listing = await response.clone().json();
+      const first = listing.collections.filter(c => c !== "")[0];  // the server lists them in natural order
+      if (first !== undefined) { state.collection = first; response = await fetch(`summary.json?runs=${encodeURIComponent(first)}`, { cache: "no-store" }); }
+      else state.collection = "";
+    }
     if (!response.ok) throw new Error(`summary.json: HTTP ${response.status}`);
     state.data = await response.json();
     state.error = null;
@@ -488,6 +504,26 @@ async function load() {
 function readHash() { const tab = location.hash.slice(1); state.tab = ["training", "testing", "hypothesis"].includes(tab) ? tab : "training"; }
 window.addEventListener("hashchange", () => { readHash(); render(); });
 document.getElementById("group-filter").addEventListener("change", e => { state.group = e.target.value; render(); });
+document.getElementById("collection").addEventListener("change", e => {
+  state.collection = e.target.value; state.seed = "mean";
+  history.replaceState(null, "", `?runs=${encodeURIComponent(state.collection)}${location.hash}`);
+  load();
+});
+function syncCollections() {
+  const select = document.getElementById("collection"), names = state.data?.collections ?? [];
+  select.replaceChildren(...names.map(c => el("option", { value: c }, c === "" ? "runs/ (top level)" : c)));
+  select.value = state.data?.collection ?? "";
+  // What the shown runs were trained with: buffer size, schedule and code version (from their metrics)
+  const runs = Object.values(state.data?.runs ?? {}).flat()
+    .map(r => ({ episode_steps: 100, time_compression: 1, ...r }));  // runs from before compression lack these keys
+  const describe = (key, f = v => v) => [...new Set(runs.map(r => r[key]).filter(v => v != null))].map(f).join(", ") || "–";
+  document.getElementById("run-info").textContent = runs.length
+    ? `Episodes of ${describe("episode_steps")} steps (time compression ${describe("time_compression")}) · replay buffer ${describe("buffer_size", v => fmt.steps(v))} · ` +
+      `${describe("schedule")} schedule · ${runs.length} runs · code ${describe("commit")}`
+    : "No runs in this collection yet.";
+  const replay = document.querySelector('.tabs a[href^="replay.html"]');
+  if (replay) replay.href = `replay.html?runs=${encodeURIComponent(state.collection ?? "")}`;
+}
 document.getElementById("seed-filter").addEventListener("change", e => { state.seed = e.target.value; render(); });
 document.getElementById("refresh").addEventListener("click", load);
 let resizeTimer = null;
