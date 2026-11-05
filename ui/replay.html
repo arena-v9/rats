@@ -558,13 +558,12 @@ async function loadRuns() {
   collectionSelect.replaceChildren(...summary.collections.map(c => Object.assign(document.createElement("option"),
     { value: c, textContent: c === "" ? "runs/ (top level)" : c })));
   collectionSelect.value = COLLECTION;
-  $("collection-label").style.display = summary.collections.length > 1 ? "" : "none";
-  state.runs = Object.entries(summary.runs).flatMap(([group, runs]) => runs.map(r => ({ group, seed: r.seed, status: r.status, step: r.step })));
+  state.runs = Object.entries(summary.runs).flatMap(([group, runs]) => runs.map(r => ({ group, seed: r.seed, status: r.status, step: r.step, buffer: r.buffer_size })));
   const select = $("run");
   select.replaceChildren(...state.runs.map(r => {
     const option = document.createElement("option");
     option.value = runKey(r);
-    option.textContent = `${GROUP_LABELS[r.group] || r.group}, seed ${r.seed}${r.status === "done" ? "" : ` (training, ${Math.round(r.step / 1000)}k)`}`;
+    option.textContent = `${GROUP_LABELS[r.group] || r.group}, seed ${r.seed}${r.buffer ? `, buffer ${Math.round(r.buffer / 1000)}k` : ""}${r.status === "done" ? "" : ` (training, ${Math.round(r.step / 1000)}k)`}`;
     return option;
   }));
   if (!state.runs.length) { state.message = "No runs yet. Start one with train.py."; return; }

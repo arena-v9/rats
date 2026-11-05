@@ -48,6 +48,7 @@ p { margin: 6px 0; }
 select, button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
 button { cursor: pointer; }
 .status-line { margin-left: auto; color: var(--muted); font-size: 0.8rem; }
+.run-info { margin: -6px 0 12px; color: var(--ink-2); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; }
 .card h3 { font-size: 0.9rem; margin: 0 0 2px; }
@@ -105,6 +106,7 @@ td.wrap, th.wrap { white-space: normal; text-align: left; }
     <span class="status-line" id="status-line"></span>
     <button id="refresh" type="button">Refresh</button>
   </div>
+  <p class="run-info" id="run-info"></p>
   <div id="view"></div>
 </main>
 <script>
@@ -511,7 +513,12 @@ function syncCollections() {
   const select = document.getElementById("collection"), names = state.data?.collections ?? [];
   select.replaceChildren(...names.map(c => el("option", { value: c }, c === "" ? "runs/ (top level)" : c)));
   select.value = state.data?.collection ?? "";
-  select.closest("label").style.display = names.length > 1 ? "" : "none";
+  // What the shown runs were trained with: buffer size, schedule and code version (from their metrics)
+  const runs = Object.values(state.data?.runs ?? {}).flat();
+  const describe = (key, f = v => v) => [...new Set(runs.map(r => r[key]).filter(v => v != null))].map(f).join(", ") || "–";
+  document.getElementById("run-info").textContent = runs.length
+    ? `Replay buffer ${describe("buffer_size", v => fmt.steps(v))} · ${describe("schedule")} schedule · ${runs.length} runs · code ${describe("commit")}`
+    : "No runs in this collection yet.";
   const replay = document.querySelector('.tabs a[href^="replay.html"]');
   if (replay) replay.href = `replay.html?runs=${encodeURIComponent(state.collection ?? "")}`;
 }
