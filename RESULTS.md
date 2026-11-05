@@ -233,7 +233,7 @@ buffer sizes. On this schedule they mean:
 | 100k | never (the run ends at 120k) | never forgotten |
 
 Per buffer size: shocked and never-shocked groups, seeds 1–10 each, plus the pilot (lit lever shocks the agent) on
-seeds 1–3 as the positive control at that buffer size. 69 runs, eight at a time. Runs in `runs/exp1/buf20k/`,
+seeds 1–3 as the positive control at that buffer size. 69 runs, eight at a time. Runs in `runs_archive/exp1/buf20k/`,
 `buf50k/`, `buf100k/`.
 
 **Measures.** As in version 3, per buffer size, with the main window redefined for the quick schedule: **the mean of
@@ -255,7 +255,7 @@ negative for longer with a larger buffer? Each pilot must pass for its buffer si
 ### Results (experiment 1, buffer ablation)
 
 **Stopped after the 20k buffer** to compress time first (version 4): the 20k-buffer runs are complete (10 shocked, 10
-never shocked, 3 pilots, in `runs/exp1/buf20k/`); one 50k run finished; the rest never started. Not analysed yet. Runs
+never shocked, 3 pilots, in `runs_archive/exp1/buf20k/`); one 50k run finished; the rest never started. Not analysed yet. Runs
 from the first batch record commit `b31c147`, later ones `4db54b9` or `e7c792f`: the training code is the same in all
 three (only the analysis and the viewer changed).
 
