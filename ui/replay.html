@@ -92,13 +92,14 @@ kbd { font: 0.75rem ui-monospace, monospace; border: 1px solid var(--border); bo
   <p class="lede">Replay of training episodes, one frame per step. On trial steps the levers come out; the lamp marks the
     lit lever. The agent's reward is only its own drive reduction.</p>
   <nav class="tabs" aria-label="Views">
-    <a href="index.html#training">Training</a>
-    <a href="index.html#testing">Testing</a>
-    <a href="index.html#hypothesis">Hypothesis</a>
+    <a href="index.html#training" class="to-index">Training</a>
+    <a href="index.html#testing" class="to-index">Testing</a>
+    <a href="index.html#hypothesis" class="to-index">Hypothesis</a>
     <a href="replay.html" aria-current="page">Replay</a>
   </nav>
 
   <div class="controls">
+    <label id="collection-label">Runs <select id="collection"></select></label>
     <label>Run <select id="run"></select></label>
     <label>Find <select id="find">
       <option value="any">any episode</option>
@@ -184,9 +185,11 @@ const fmt = {
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function runKey(run) { return `${run.group}/${run.seed}`; }
 function currentRun() { return state.runs.find(r => runKey(r) === state.run); }
+// The collection of runs (?runs=exp1/buf20k; empty for runs directly under runs/), from the page's URL
+const COLLECTION = new URLSearchParams(location.search).get("runs") ?? "";
 function query(extra = {}) {
   const [group, seed] = state.run.split("/");
-  return new URLSearchParams({ group, seed, ...extra }).toString();
+  return new URLSearchParams({ runs: COLLECTION, group, seed, ...extra }).toString();
 }
 
 // ---------- the pixel scene ----------
@@ -550,7 +553,12 @@ async function getJSON(url) {
   return response.json();
 }
 async function loadRuns() {
-  const summary = await getJSON("summary.json");
+  const summary = await getJSON(`summary.json?runs=${encodeURIComponent(COLLECTION)}`);
+  const collectionSelect = $("collection");
+  collectionSelect.replaceChildren(...summary.collections.map(c => Object.assign(document.createElement("option"),
+    { value: c, textContent: c === "" ? "runs/ (top level)" : c })));
+  collectionSelect.value = COLLECTION;
+  $("collection-label").style.display = summary.collections.length > 1 ? "" : "none";
   state.runs = Object.entries(summary.runs).flatMap(([group, runs]) => runs.map(r => ({ group, seed: r.seed, status: r.status, step: r.step })));
   const select = $("run");
   select.replaceChildren(...state.runs.map(r => {
@@ -737,6 +745,8 @@ async function poll() {
   }
 }
 
+for (const link of document.querySelectorAll("a.to-index")) link.href = `index.html?runs=${encodeURIComponent(COLLECTION)}${new URL(link.href).hash}`;
+$("collection").addEventListener("change", e => { location.href = `replay.html?runs=${encodeURIComponent(e.target.value)}`; });
 $("run").addEventListener("change", e => { state.run = e.target.value; state.message = null; selectRun(); });
 $("episode-slider").addEventListener("input", e => goEpisode(Number(e.target.value)));
 $("episode-number").addEventListener("change", e => goEpisode(Number(e.target.value)));

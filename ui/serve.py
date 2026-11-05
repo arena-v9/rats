@@ -1,8 +1,9 @@
 """
-Serves the viewer: ui/index.html, plus /summary.json built fresh from runs/ on each request (every run so far, and the
-analysis of the finished ones). The analysis is recomputed only when the set of finished runs changes. For the replay
-(ui/replay.html): /episodes.json?group=G&seed=S lists a run's recorded episodes, /episode.json?group=G&seed=S&i=N
-gives one episode step by step.
+Serves the viewer: ui/index.html, plus /summary.json built fresh from runs/ on each request (every run so far in one
+collection, and the analysis of the finished ones). The analysis is recomputed only when the set of finished runs
+changes. For the replay (ui/replay.html): /episodes.json?group=G&seed=S lists a run's recorded episodes,
+/episode.json?group=G&seed=S&i=N gives one episode step by step. Every request takes ?runs=<collection> (e.g.
+exp1/buf20k; empty for runs directly under runs/); /summary.json lists the collections.
 
     .venv/bin/python ui/serve.py        # then open http://localhost:8000
 """
@@ -18,7 +19,7 @@ from pathlib import Path
 UI_DIR = Path(__file__).parent
 sys.path.insert(0, str(UI_DIR.parent))
 
-from analyze import analysis, finished, load_all  # noqa: E402
+from analyze import analysis, collections, finished, load_all  # noqa: E402
 from recording import FILE_NAME, episode, episodes, read  # noqa: E402
 from train import GROUPS, RUNS_DIR  # noqa: E402
 
@@ -36,14 +37,24 @@ def _no_nan(value):
     return value
 
 
-def summary() -> dict:
-    runs = load_all()
+def collection(query: dict) -> str:
+    """The collection named in the query (?runs=exp1/buf20k; empty for runs/ itself), only if it really holds runs."""
+    name = query.get("runs", [""])[0]
+    if name not in collections() and name != "":
+        raise KeyError(name)
+    return name
+
+
+def summary(query: dict) -> dict:
+    name = collection(query)
+    runs = load_all(name)
     done = finished(runs)
-    key = json.dumps({group: [run["seed"] for run in group_runs] for group, group_runs in done.items()})
+    key = json.dumps([name, {group: [run["seed"] for run in group_runs] for group, group_runs in done.items()}])
     if key not in _cache:
-        _cache.clear()
+        if len(_cache) > 20:
+            _cache.clear()
         _cache[key] = analysis(done)
-    return {"groups": GROUPS, "runs": runs, "analysis": _cache[key]}
+    return {"groups": GROUPS, "collection": name, "collections": collections(), "runs": runs, "analysis": _cache[key]}
 
 
 _recordings: dict[Path, tuple] = {}  # path -> (file size, records, episode list), reread when the file grows
@@ -54,7 +65,7 @@ def recording(query: dict) -> tuple:
     group, seed = query["group"][0], int(query["seed"][0])
     if group not in GROUPS:
         raise KeyError(group)
-    path = RUNS_DIR / group / f"seed_{seed}" / FILE_NAME
+    path = RUNS_DIR / collection(query) / group / f"seed_{seed}" / FILE_NAME
     size = path.stat().st_size
     if path not in _recordings or _recordings[path][0] != size:
         steps = read(path)
@@ -77,7 +88,7 @@ def one_episode(query: dict) -> dict:
     return {"i": i, "start": start, **episode(steps, start, listing["length"][i])}
 
 
-ROUTES = {"/summary.json": lambda query: _no_nan(summary()), "/episodes.json": episode_list,
+ROUTES = {"/summary.json": lambda query: _no_nan(summary(query)), "/episodes.json": episode_list,
           "/episode.json": one_episode}
 
 

@@ -1,39 +1,51 @@
 """
-The analysis of finished runs (runs/*/seed_*/metrics.json): the pilot check, then experiment 1 (never shocked minus
-shocked, each group against no effect, the checkpoint curves and the verdict on H1). The main measure is the lit-lever
-share early in phase 2 (mean of the 120k, 140k and 160k checkpoints); the final checkpoint and the curves show whether
-any avoidance fades. Prints it as Markdown for
-RESULTS.md; the viewer (ui/serve.py) shows the same analysis.
+The analysis of finished runs in one collection (runs/<collection>/<group>/seed_*/metrics.json; the collection is
+empty for runs directly under runs/): the pilot check, then experiment 1 (never shocked minus shocked, each group
+against no effect, the checkpoint curves and the verdict on H1). The main measure is the lit-lever share early in
+phase 2: the mean over the schedule's main window (full schedule: the 120k, 140k and 160k checkpoints; quick: 45k to
+60k, the first 20k steps of phase 2). The final checkpoint and the curves show whether any avoidance fades. Prints it as
+Markdown for RESULTS.md; the viewer (ui/serve.py) shows the same analysis.
 
-    .venv/bin/python analyze.py
+    .venv/bin/python analyze.py                  # runs/<group>/...
+    .venv/bin/python analyze.py exp1/buf20k      # runs/exp1/buf20k/<group>/...
 """
 
 import json
+import sys
 
 import numpy as np
 
 from stats import compare, compare_paired
-from train import GROUPS, RUNS_DIR
+from train import GROUPS, RUNS_DIR, SCHEDULES
 
 REFERENCE, OTHER, PILOT = "shocked", "never_shocked", "pilot_self_shock"
 SEEDS_PER_GROUP = 10  # planned runs per experiment-1 group
 PILOT_MAX_LIT_SHARE, PILOT_MAX_DEATH_RATE = 0.2, 0.05
-END_OF_PHASE1, EARLY, FINAL = slice(0, 1), slice(1, 4), slice(-1, None)  # checkpoints: 100k; 120k–160k; 300k
+END_OF_PHASE1, MAIN, FINAL = "end_of_phase1", "main", "final"  # which checkpoints a measure averages
 # (label, metrics key, which checkpoints (averaged), the value meaning "no effect", display scale); the first is the main one
 MEASURES = [
-    ("Lit-lever share, % (120k–160k, main)", "lit_share", EARLY, 0.5, 100),
+    ("Lit-lever share, % (main window)", "lit_share", MAIN, 0.5, 100),
     ("Lit-lever share, % (final)", "lit_share", FINAL, 0.5, 100),
-    ("Q-gap, lit − unlit (120k–160k)", "q_gap", EARLY, 0.0, 1),
+    ("Q-gap, lit − unlit (main window)", "q_gap", MAIN, 0.0, 1),
     ("Q-gap, lit − unlit (final)", "q_gap", FINAL, 0.0, 1),
     ("Scream probe (end of phase 1)", "scream_probe", END_OF_PHASE1, 0.0, 1),
+    ("Scream probe (main window)", "scream_probe", MAIN, 0.0, 1),
     ("Scream probe (final)", "scream_probe", FINAL, 0.0, 1),
 ]
 CURVE_KEYS = ("lit_share", "q_gap", "scream_probe")
 
 
-def load_all() -> dict[str, list[dict]]:
-    """Every run so far, finished or not, by group and sorted by seed."""
-    load = lambda group: [json.loads(p.read_text()) for p in (RUNS_DIR / group).glob("seed_*/metrics.json")]
+def collections() -> list[str]:
+    """Every folder under runs/ that holds group folders ("" for runs/ itself), e.g. "exp1/buf20k"."""
+    found = {path.parent.parent.parent.relative_to(RUNS_DIR).as_posix() for group in GROUPS
+             for path in RUNS_DIR.glob(f"**/{group}/seed_*/metrics.json")}
+    return sorted("" if c == "." else c for c in found)
+
+
+def load_all(collection: str = "") -> dict[str, list[dict]]:
+    """Every run so far in the collection, finished or not, by group and sorted by seed."""
+    folder = RUNS_DIR / collection
+    load = lambda group: [json.loads(p.read_text()) for p in (folder / group).glob("seed_*/metrics.json")]
     return {group: sorted(load(group), key=lambda run: run["seed"]) for group in GROUPS}
 
 
@@ -41,14 +53,33 @@ def finished(runs_by_group: dict[str, list[dict]]) -> dict[str, list[dict]]:
     return {group: [run for run in runs if run["status"] == "done"] for group, runs in runs_by_group.items()}
 
 
-def full_schedule(runs: list[dict]) -> list[dict]:
-    """Experiment 1's measures are defined on the full schedule's checkpoints (120k–160k, 300k); quick runs are left out."""
-    return [run for run in runs if run.get("schedule", "full") == "full"]
+def main_window(run: dict) -> tuple[int, int]:
+    """First and last step of the run's main window (runs from before schedules existed used the full schedule)."""
+    return tuple(run.get("main_window") or SCHEDULES[run.get("schedule", "full")]["main_window"])
 
 
-def values(runs: list[dict], key: str, checkpoints: slice) -> np.ndarray:
-    """One value per run: the mean over the chosen checkpoints (a share of None, never pressed, counts as NaN)."""
-    return np.array([np.array([c[key] for c in run["checkpoints"][checkpoints]], dtype=float).mean() for run in runs])
+def chosen(run: dict, which: str) -> list[dict]:
+    if which == END_OF_PHASE1:
+        return [c for c in run["checkpoints"] if c["step"] == run["phase1_steps"]]
+    if which == MAIN:
+        first, last = main_window(run)
+        return [c for c in run["checkpoints"] if first <= c["step"] <= last]
+    assert which == FINAL
+    return run["checkpoints"][-1:]
+
+
+def values(runs: list[dict], key: str, which: str | slice) -> np.ndarray:
+    """
+    One value per run: the mean over the chosen checkpoints (END_OF_PHASE1, MAIN or FINAL, or a slice of the list). A
+    share of None (never pressed) counts as NaN.
+    """
+    pick = (lambda run: run["checkpoints"][which]) if isinstance(which, slice) else (lambda run: chosen(run, which))
+    return np.array([np.array([c[key] for c in pick(run)], dtype=float).mean() for run in runs])
+
+
+def one_schedule(runs: list[dict]) -> None:
+    schedules = {run.get("schedule", "full") for run in runs}
+    assert len(schedules) <= 1, f"runs from different schedules can't be compared checkpoint by checkpoint: {schedules}"
 
 
 def pilot(runs: list[dict]) -> dict | None:
@@ -68,6 +99,7 @@ def experiment_1(shocked: list[dict], never: list[dict], rng: np.random.Generato
     """Needs at least 2 finished runs per group."""
     if len(shocked) < 2 or len(never) < 2:
         return None
+    one_schedule(shocked + never)
     comparisons, against_null = [], []
     for label, key, checkpoints, null, scale in MEASURES:
         a, b = values(shocked, key, checkpoints), values(never, key, checkpoints)
@@ -86,10 +118,10 @@ def experiment_1(shocked: list[dict], never: list[dict], rng: np.random.Generato
 
 def verdict(share: dict, shocked: list[dict], never: list[dict]) -> dict:
     """
-    H1: the shocked group's lit-lever share (main measure, 120k–160k) is clearly below the never-shocked group's, with
-    most shocked runs below 50%.
+    H1: the shocked group's lit-lever share (main measure, over the main window) is clearly below the never-shocked
+    group's, with most shocked runs below 50%.
     """
-    below = int((values(shocked, "lit_share", EARLY) < 0.5).sum())
+    below = int((values(shocked, "lit_share", MAIN) < 0.5).sum())
     all_in = len(shocked) >= SEEDS_PER_GROUP and len(never) >= SEEDS_PER_GROUP
     if share["clear"] and share["difference"] > 0 and below > len(shocked) / 2:
         status = "supported"
@@ -102,8 +134,7 @@ def verdict(share: dict, shocked: list[dict], never: list[dict]) -> dict:
 
 def analysis(done: dict[str, list[dict]]) -> dict:
     rng = np.random.default_rng(0)  # fixed, so the same runs always give the same intervals
-    return {"pilot": pilot(done[PILOT]),
-            "experiment_1": experiment_1(full_schedule(done[REFERENCE]), full_schedule(done[OTHER]), rng)}
+    return {"pilot": pilot(done[PILOT]), "experiment_1": experiment_1(done[REFERENCE], done[OTHER], rng)}
 
 
 def interval(result: dict) -> str:
@@ -116,7 +147,7 @@ def markdown(results: dict) -> str:
     lines = []
     if pilot_results := results["pilot"]:
         lines += ["## Pilot: the lit lever shocks the agent itself", "",
-                  "| Seed | Lit-lever share | Phase-1 deaths (after 50k) | Minutes | Passed |", "|---|---|---|---|---|"]
+                  "| Seed | Lit-lever share | Phase-1 deaths (once ε is at its floor) | Minutes | Passed |", "|---|---|---|---|---|"]
         for row in pilot_results["runs"]:
             share = "never pressed" if row["lit_share"] is None else f"{100 * row['lit_share']:.1f}%"
             lines.append(f"| {row['seed']} | {share} | {100 * row['death_rate']:.1f}% | {row['minutes']:.1f} | "
@@ -142,4 +173,4 @@ def markdown(results: dict) -> str:
 
 
 if __name__ == "__main__":
-    print(markdown(analysis(finished(load_all()))))
+    print(markdown(analysis(finished(load_all(sys.argv[1] if len(sys.argv) > 1 else "")))))

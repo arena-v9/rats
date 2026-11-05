@@ -214,6 +214,48 @@ which the TD errors on death transitions could no longer be measured and the pro
 (where a shock kills) about 5 smaller than the exact one, though with the right sign. Harmless here, since the agent no
 longer reaches low health in phase 2; buffer size governs it, so the buffer ablation measures it too.
 
+### Experiment 1 with version 3.3: replay buffer ablation
+
+**Why buffer size.** The replay buffer is the agent's only memory of individual experiences: while the shocked
+group's own shocks from phase 1 are still in it, every batch keeps retraining "scream → my health drops". In phase 2
+the shocked group is never shocked, and the other's screams are never followed by harm to the agent, so as soon as
+those memories leave the buffer, what phase 1 taught survives only in the network's weights, and the harmless screams
+extinguish it. Buffer size therefore sets how long the agent rehearses its own pain, and any effect on the lit lever
+may depend on it.
+
+**Design.** Quick schedule (phase 1 40k steps, about 160 random shocks for the shocked group; phase 2 80k), three
+buffer sizes. On this schedule they mean:
+
+| Buffer | Phase-1 memories leave the buffer | |
+|---|---|---|
+| 20k | 20k steps into phase 2 (step 60k, the end of the main window) | forgotten early |
+| 50k | 50k steps into phase 2 (step 90k) | forgotten late |
+| 100k | never (the run ends at 120k) | never forgotten |
+
+Per buffer size: shocked and never-shocked groups, seeds 1–10 each, plus the pilot (lit lever shocks the agent) on
+seeds 1–3 as the positive control at that buffer size. 69 runs, eight at a time. Runs in `runs/exp1/buf20k/`,
+`buf50k/`, `buf100k/`.
+
+**Measures.** As in version 3, per buffer size, with the main window redefined for the quick schedule: **the mean of
+the 45k, 50k, 55k and 60k checkpoints** (the first 20k steps of phase 2, the period in which the pilot learned
+avoidance). H1 is tested separately at each buffer size, with the same criterion as before (shocked group's lit-lever
+share clearly below the never-shocked group's, most shocked runs below 50%). The buffer question: does the
+never-shocked minus shocked difference grow with buffer size, and does the scream probe in the shocked group stay
+negative for longer with a larger buffer? Each pilot must pass for its buffer size's result to count.
+
+### Predictions (experiment 1, buffer ablation)
+
+*To be filled in by the experimenter before the runs.*
+
+- H1 at 20k / 50k / 100k:
+- Does the effect grow with buffer size:
+- Scream probe in the shocked group over phase 2, by buffer size:
+- Pilots pass at all three buffer sizes:
+
+### Results (experiment 1, buffer ablation)
+
+*Not run yet.*
+
 ## Earlier versions of experiment 1
 
 ### Version 1: the other's health and energy visible (4 November)

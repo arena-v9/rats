@@ -3,16 +3,20 @@ Trains one run per (group, seed): phase 1 (pre-exposure) then phase 2 (the lever
 1 and regularly through phase 2. Results go to runs/<group>/seed_<seed>/: metrics.json (rewritten at every log point,
 so the viewer, ui/serve.py, can follow a run while it trains) and recording.bin (every step, for the replay).
 
-Two schedules: "full" (100k + 200k steps, the one the experiment's measures are defined on) and "quick" (40k + 80k,
-for checking a setup fast, e.g. the pilot). Each run records its schedule.
+Two schedules: "full" (100k + 200k steps) and "quick" (40k + 80k), each with its own main window for the analysis.
+With --experiment, runs go to runs/<experiment>/buf<size>k/<group>/seed_<seed>/, one collection per replay buffer size
+(--buffers), so a buffer ablation is one command. Each run records its schedule, buffer size and code commit.
 
-    .venv/bin/python train.py --groups shocked never_shocked --seeds {1..10}   # at most 10 runs at once
+    .venv/bin/python train.py --groups shocked never_shocked --seeds {1..10}
     .venv/bin/python train.py --groups pilot_self_shock --seeds 1 2 3 4 5 --schedule quick
+    .venv/bin/python train.py --experiment exp1 --buffers 20000 50000 100000 --schedule quick \
+        --groups shocked never_shocked pilot_self_shock --seeds {1..10} --pilot-seeds 1 2 3
 """
 
 import argparse
 import copy
 import json
+import os
 import subprocess
 import sys
 import time
@@ -21,7 +25,7 @@ from pathlib import Path
 import numpy as np
 import torch as t
 
-from agent import BATCH_SIZE, LEARNING_RATE, MAX_GRAD_NORM, QNetwork, ReplayBuffer, train_step
+from agent import BATCH_SIZE, BUFFER_SIZE, LEARNING_RATE, MAX_GRAD_NORM, QNetwork, ReplayBuffer, train_step
 from env import NUM_ACTIONS, OBSERVATION, REST, LeverTask
 from evaluate import evaluate
 from exact import exact_trial_q
@@ -35,15 +39,16 @@ GROUPS = {
 }
 SCHEDULES = {
     "full": {"phase1_steps": 100_000, "phase2_steps": 200_000, "warmup_steps": 20_000, "epsilon_end_step": 50_000,
-             "checkpoint_every": 20_000, "log_every": 5_000},
+             "checkpoint_every": 20_000, "log_every": 5_000, "main_window": (120_000, 160_000)},
     "quick": {"phase1_steps": 40_000, "phase2_steps": 80_000, "warmup_steps": 10_000, "epsilon_end_step": 25_000,
-              "checkpoint_every": 5_000, "log_every": 1_000},
+              "checkpoint_every": 5_000, "log_every": 1_000, "main_window": (45_000, 60_000)},
 }
 # warmup: random actions fill the buffer before training starts; checkpoint_every: phase-2 steps between greedy
-# evaluations; log_every: steps between training-curve points
+# evaluations; log_every: steps between training-curve points; main_window: the checkpoints the main measure averages
+# (full: 120k, 140k, 160k; quick: 45k to 60k, the first 20k steps of phase 2)
 EPSILON_START, EPSILON_END = 1.0, 0.02
 TARGET_UPDATE_EVERY = 200  # gradient steps
-MAX_PARALLEL = 10
+MAX_PARALLEL = min(10, os.cpu_count() or 1)  # one core per run
 RUNS_DIR = Path(__file__).parent / "runs"
 
 LEVERS_ACTIVE, LIT_B = OBSERVATION.index("levers_active"), OBSERVATION.index("lit_B")  # lit_B is 1 when B is lit
@@ -57,10 +62,23 @@ def epsilon(step: int, schedule: dict) -> float:
     return max(EPSILON_END, EPSILON_START + (EPSILON_END - EPSILON_START) * progress)
 
 
-def train(group: str, seed: int, schedule_name: str = "full") -> None:
+def commit() -> str:
+    """The code version: the commit hash, with "+changes" if tracked files differ from it."""
+    git = lambda *args: subprocess.run(["git", *args], cwd=Path(__file__).parent, capture_output=True, text=True).stdout
+    head = git("rev-parse", "--short", "HEAD").strip() or "unknown"
+    return head + ("+changes" if git("status", "--porcelain", "--untracked-files=no").strip() else "")
+
+
+def collection_for(experiment: str | None, buffer_size: int) -> str:
+    return f"{experiment}/buf{buffer_size // 1000}k" if experiment else ""
+
+
+def train(group: str, seed: int, schedule_name: str = "full", buffer_size: int = BUFFER_SIZE,
+          collection: str = "") -> None:
     settings, schedule = GROUPS[group], SCHEDULES[schedule_name]
     phase1_steps, warmup = schedule["phase1_steps"], schedule["warmup_steps"]
-    run_dir = RUNS_DIR / group / f"seed_{seed}"
+    run_dir = RUNS_DIR / collection / group / f"seed_{seed}"
+    code_version = commit()
     run_dir.mkdir(parents=True, exist_ok=True)
     device = t.device("cuda" if t.cuda.is_available() else "cpu")
     t.manual_seed(seed)
@@ -69,7 +87,7 @@ def train(group: str, seed: int, schedule_name: str = "full") -> None:
     q_net = QNetwork().to(device)
     target_net = copy.deepcopy(q_net)
     optimizer = t.optim.Adam(q_net.parameters(), lr=LEARNING_RATE)
-    buffer = ReplayBuffer(agent_rng)
+    buffer = ReplayBuffer(agent_rng, capacity=buffer_size)
     total_steps = phase1_steps + schedule["phase2_steps"]
     episodes = {"phase1_late": {"episodes": 0, "deaths": 0}, "phase2": {"episodes": 0, "deaths": 0}}
     checkpoints, training, updates, start = [], [], 0, time.time()
@@ -82,8 +100,10 @@ def train(group: str, seed: int, schedule_name: str = "full") -> None:
 
     def save(step: int, status: str) -> None:
         recorder.flush()
-        metrics = {"group": group, "seed": seed, "settings": settings, "schedule": schedule_name, "status": status,
+        metrics = {"group": group, "seed": seed, "settings": settings, "schedule": schedule_name,
+                   "buffer_size": buffer_size, "collection": collection, "commit": code_version, "status": status,
                    "step": step, "total_steps": total_steps, "phase1_steps": phase1_steps,
+                   "main_window": schedule["main_window"],
                    "seconds": round(time.time() - start), "episodes": episodes, "training": training,
                    "checkpoints": checkpoints}
         temporary = run_dir / "metrics.json.tmp"
@@ -280,15 +300,19 @@ def diagnostics(q_net, target_net, buffer: ReplayBuffer, device: t.device, lit_t
     return result
 
 
-def launch(jobs: list[tuple[str, int]], schedule_name: str) -> None:
-    """Runs each job in its own process, at most MAX_PARALLEL at once; each logs to its run directory."""
+def launch(jobs: list[tuple[str, int, int, str]], schedule_name: str) -> None:
+    """
+    Runs each job (group, seed, buffer size, collection) in its own process, at most MAX_PARALLEL at once; each logs
+    to its run directory.
+    """
     processes = []
-    for group, seed in jobs:
+    for group, seed, buffer_size, collection in jobs:
         while sum(p.poll() is None for p in processes) >= MAX_PARALLEL:
             time.sleep(5)
-        log = RUNS_DIR / group / f"seed_{seed}" / "train.log"
+        log = RUNS_DIR / collection / group / f"seed_{seed}" / "train.log"
         log.parent.mkdir(parents=True, exist_ok=True)
-        command = [sys.executable, __file__, "--groups", group, "--seeds", str(seed), "--schedule", schedule_name]
+        command = [sys.executable, __file__, "--groups", group, "--seeds", str(seed), "--schedule", schedule_name,
+                   "--buffers", str(buffer_size), "--collection", collection]
         processes.append(subprocess.Popen(command, stdout=log.open("w"), stderr=subprocess.STDOUT))
     failed = [job for job, p in zip(jobs, processes) if p.wait() != 0]
     print(f"{len(jobs) - len(failed)}/{len(jobs)} runs finished" + (f"; failed (see train.log): {failed}" if failed else ""))
@@ -299,12 +323,22 @@ def main() -> None:
     parser.add_argument("--groups", nargs="+", choices=GROUPS, required=True)
     parser.add_argument("--seeds", nargs="+", type=int, required=True)
     parser.add_argument("--schedule", choices=SCHEDULES, default="full")
+    parser.add_argument("--buffers", nargs="+", type=int, default=[BUFFER_SIZE], help="replay buffer sizes")
+    parser.add_argument("--experiment", help="name; runs go to runs/<experiment>/buf<size>k/")
+    parser.add_argument("--pilot-seeds", nargs="+", type=int, help="seeds for pilot_self_shock (default: --seeds)")
+    parser.add_argument("--collection", help=argparse.SUPPRESS)  # set by launch() for a single job
     args = parser.parse_args()
-    # Seed by seed, alternating groups, so every batch holds both groups equally
-    jobs = [(group, seed) for seed in args.seeds for group in args.groups]
+    if len(args.buffers) > 1 and not args.experiment:
+        parser.error("several buffer sizes need --experiment, so their runs go to separate folders")
+    # Buffer by buffer, then seed by seed, alternating groups, so every batch holds the groups equally
+    jobs = [(group, seed, buffer_size, collection_for(args.experiment, buffer_size) if args.collection is None
+             else args.collection)
+            for buffer_size in args.buffers for seed in sorted(set(args.seeds) | set(args.pilot_seeds or []))
+            for group in args.groups
+            if seed in (args.pilot_seeds or args.seeds if group == "pilot_self_shock" else args.seeds)]
     if len(jobs) == 1:
         t.set_num_threads(1)
-        train(*jobs[0], args.schedule)
+        train(jobs[0][0], jobs[0][1], args.schedule, jobs[0][2], jobs[0][3])
     else:
         launch(jobs, args.schedule)
 
