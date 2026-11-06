@@ -1,9 +1,12 @@
 # Prompt: slides for the whole project (gridworld, then lever task)
 
-Use this prompt with the images and videos from both projects attached:
+The images and videos are on GitHub, at the URLs in the Assets table below (raw files, pinned to the commits they
+were made in, so the links don't change when branches move):
 
-- `homeostasis/presentation/out/` — the gridworld (6 figures)
-- `rats/presentation/out/` — the lever task (5 figures, 3 videos)
+- the gridworld's 6 figures: `arena-v9/homeostasis` at commit `80eaab9`, folder `presentation/out/`
+- the lever task's 5 figures and 3 videos: `arena-v9/rats` at commit `a6bab17`, folder `presentation/out/`
+
+Embed the images by these URLs (or download them from there); don't recreate them.
 
 Everything below comes from the two projects' records: the gridworld's analysis of its experiments 1 and 2 (5 runs
 per group, trained on 5 November 2026 with the code at `homeostasis` commit `405885a`), and the lever task's
@@ -219,24 +222,24 @@ Across the project:
 
 ## Assets
 
-Every image and video, with its path, what it shows and where it goes:
+Every image and video, with its URL, what it shows and where it goes:
 
 | File | What it shows | Slide |
 |---|---|---|
-| `homeostasis/presentation/out/design_1_push.png` | Before and after a push: the NPC pushed onto fire, at no cost to the agent | 3 |
-| `homeostasis/presentation/out/design_2_shared_channels.png` | Five of the network's input channels for an example state: both bodies on body, health and energy; only self separates them | 4 |
-| `homeostasis/presentation/out/design_3_experiments.png` | Training on the parallel grid (the NPC on a grid the agent can't enter) and experiment 2's test (the NPC moved within reach) | 5 |
-| `homeostasis/presentation/out/results_1_exp1_reliability.png` | Experiment 1: reliability by group, runs as dots, means with 95% intervals, p-values | 6 |
-| `homeostasis/presentation/out/results_2_exp1_survival.png` | Experiment 1: mean survival over training by group (all groups learn; without the NPC they stay a little lower) | Addendum |
-| `homeostasis/presentation/out/results_3_exp2_pushes.png` | Experiment 2: all pushes and pushes onto fire per test episode, psychopath vs homeostatic, with and without the NPC; the confound in its subtitle | 7 |
-| `rats/presentation/out/1_phase1_conditioning.mp4` | A shocked agent in phase 1: random shocks, its own scream ("AAGH!"), a caption per step (31 s) | 11 |
-| `rats/presentation/out/2_side_by_side.mp4` | Phase 2, lever B lit for both: the shocked agent presses only the unlit lever; the never-shocked one presses the lit lever 3 times and the other rat screams each time; a counter of lit presses (31 s) | 12 |
-| `rats/presentation/out/1_main_result.png` | Lit-lever share in the first 8k steps of phase 2, per buffer size; runs as dots, means with 95% intervals, p-values | 13 |
-| `rats/presentation/out/2_time_course.png` | Lit-lever share through phase 2, one panel per buffer size; lines smoothed over 3 checkpoints, faint dots the raw means; marks when the agent's own shocks leave memory | 14 |
-| `rats/presentation/out/3_scream_meaning.png` | The scream probe through phase 2: shocked agents per buffer size vs never-shocked | 15 |
-| `rats/presentation/out/4_manipulation_check.png` | The scream probe at the end of phase 1: never shocked, one-step shock (first attempt), two-step shock (final design) | Addendum |
-| `rats/presentation/out/5_positive_control.png` | Positive control: when the lit lever shocks the agent itself, all 9 runs learn to avoid it | Addendum |
-| `rats/presentation/out/3_positive_control.mp4` | The positive control early in phase 2 (shocking itself) and later (avoiding the lit lever) (57 s) | Addendum |
+| https://raw.githubusercontent.com/arena-v9/homeostasis/80eaab921f7daa308df2b2af7a8dcdb0067089c3/presentation/out/design_1_push.png | Before and after a push: the NPC pushed onto fire, at no cost to the agent | 3 |
+| https://raw.githubusercontent.com/arena-v9/homeostasis/80eaab921f7daa308df2b2af7a8dcdb0067089c3/presentation/out/design_2_shared_channels.png | Five of the network's input channels for an example state: both bodies on body, health and energy; only self separates them | 4 |
+| https://raw.githubusercontent.com/arena-v9/homeostasis/80eaab921f7daa308df2b2af7a8dcdb0067089c3/presentation/out/design_3_experiments.png | Training on the parallel grid (the NPC on a grid the agent can't enter) and experiment 2's test (the NPC moved within reach) | 5 |
+| https://raw.githubusercontent.com/arena-v9/homeostasis/80eaab921f7daa308df2b2af7a8dcdb0067089c3/presentation/out/results_1_exp1_reliability.png | Experiment 1: reliability by group, runs as dots, means with 95% intervals, p-values | 6 |
+| https://raw.githubusercontent.com/arena-v9/homeostasis/80eaab921f7daa308df2b2af7a8dcdb0067089c3/presentation/out/results_2_exp1_survival.png | Experiment 1: mean survival over training by group (all groups learn; without the NPC they stay a little lower) | Addendum |
+| https://raw.githubusercontent.com/arena-v9/homeostasis/80eaab921f7daa308df2b2af7a8dcdb0067089c3/presentation/out/results_3_exp2_pushes.png | Experiment 2: all pushes and pushes onto fire per test episode, psychopath vs homeostatic, with and without the NPC; the confound in its subtitle | 7 |
+| https://raw.githubusercontent.com/arena-v9/rats/a6bab179514df3626dad10e7f620fa4e05a989cf/presentation/out/1_phase1_conditioning.mp4 | A shocked agent in phase 1: random shocks, its own scream ("AAGH!"), a caption per step (31 s) | 11 |
+| https://raw.githubusercontent.com/arena-v9/rats/a6bab179514df3626dad10e7f620fa4e05a989cf/presentation/out/2_side_by_side.mp4 | Phase 2, lever B lit for both: the shocked agent presses only the unlit lever; the never-shocked one presses the lit lever 3 times and the other rat screams each time; a counter of lit presses (31 s) | 12 |
+| https://raw.githubusercontent.com/arena-v9/rats/a6bab179514df3626dad10e7f620fa4e05a989cf/presentation/out/1_main_result.png | Lit-lever share in the first 8k steps of phase 2, per buffer size; runs as dots, means with 95% intervals, p-values | 13 |
+| https://raw.githubusercontent.com/arena-v9/rats/a6bab179514df3626dad10e7f620fa4e05a989cf/presentation/out/2_time_course.png | Lit-lever share through phase 2, one panel per buffer size; lines smoothed over 3 checkpoints, faint dots the raw means; marks when the agent's own shocks leave memory | 14 |
+| https://raw.githubusercontent.com/arena-v9/rats/a6bab179514df3626dad10e7f620fa4e05a989cf/presentation/out/3_scream_meaning.png | The scream probe through phase 2: shocked agents per buffer size vs never-shocked | 15 |
+| https://raw.githubusercontent.com/arena-v9/rats/a6bab179514df3626dad10e7f620fa4e05a989cf/presentation/out/4_manipulation_check.png | The scream probe at the end of phase 1: never shocked, one-step shock (first attempt), two-step shock (final design) | Addendum |
+| https://raw.githubusercontent.com/arena-v9/rats/a6bab179514df3626dad10e7f620fa4e05a989cf/presentation/out/5_positive_control.png | Positive control: when the lit lever shocks the agent itself, all 9 runs learn to avoid it | Addendum |
+| https://raw.githubusercontent.com/arena-v9/rats/a6bab179514df3626dad10e7f620fa4e05a989cf/presentation/out/3_positive_control.mp4 | The positive control early in phase 2 (shocking itself) and later (avoiding the lit lever) (57 s) | Addendum |
 
 The gridworld figures draw the map in its viewer's colours (agent blue, NPC purple, fire orange, food green). The
 videos show a pixel-art side view: the agent's chamber (levers A and B, the lamp above the lit lever, a food hopper)
